@@ -1,0 +1,4 @@
+.global isprime
+
+isprime:
+    ret
