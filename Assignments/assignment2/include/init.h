@@ -10,7 +10,7 @@
 
 
 extern void init_start(void);
-extern int do_syscall(int syscall, u64 param1, u64 param2, u64 param3, u64 param4);
+extern long do_syscall(int syscall, u64 param1, u64 param2, u64 param3, u64 param4);
 extern int handle_div_by_zero(void);
 extern int handle_page_fault(void);
 
