@@ -3,11 +3,11 @@
 #include<context.h>
 #include<memory.h>
 
-u64 *extract_addr_from_page_entry(u64 *entry_ptr)
+u64 extract_addr_from_page_entry(u64 *entry_ptr)
 {
     u64 physical_addr;
-    physical_addr = (*entry_ptr) >> 12;
-    return (u64 *)osmap(physical_addr);
+    physical_addr = ((*entry_ptr) >> 12) & 0xFFFFFFFFFF;
+    return physical_addr;
 }
 
 int is_valid_virtual_addr(long long addr, u64 pgd)
@@ -17,22 +17,22 @@ int is_valid_virtual_addr(long long addr, u64 pgd)
 
     l4_virtual_addr = (u64 *)osmap(pgd);
     next_entry_ptr = &l4_virtual_addr[(addr & 0xff8000000000) >> 39];
-    if ((*next_entry_ptr) & 0x1 == 0)
+    if (!((*next_entry_ptr) & 0x1))
         return 0;
 
-    l3_virtual_addr = extract_addr_from_page_entry(next_entry_ptr);
+    l3_virtual_addr = (u64 *)osmap(extract_addr_from_page_entry(next_entry_ptr));
     next_entry_ptr = &l3_virtual_addr[(addr & 0x007fc0000000) >> 30];
-    if ((*next_entry_ptr) & 0x1 == 0)
+    if (!((*next_entry_ptr) & 0x1))
         return 0;
 
-    l2_virtual_addr = extract_addr_from_page_entry(next_entry_ptr);
+    l2_virtual_addr = (u64 *)osmap(extract_addr_from_page_entry(next_entry_ptr));
     next_entry_ptr = &l2_virtual_addr[(addr & 0x00003fe00000) >> 21];
-    if ((*next_entry_ptr) & 0x1 == 0)
+    if (!((*next_entry_ptr) & 0x1))
         return 0;
 
-    l1_virtual_addr = extract_addr_from_page_entry(next_entry_ptr);
+    l1_virtual_addr = (u64 *)osmap(extract_addr_from_page_entry(next_entry_ptr));
     next_entry_ptr = &l1_virtual_addr[(addr & 0x0000001ff000) >> 12];
-    if ((*next_entry_ptr) & 0x1 == 0)
+    if (!((*next_entry_ptr) & 0x1))
         return 0;
     return 1;
 }
@@ -45,19 +45,30 @@ void free_data_page(long long addr, u64 pgd)
 
     l4_virtual_addr = (u64 *)osmap(pgd);
     next_entry_ptr = &l4_virtual_addr[(addr & 0xff8000000000) >> 39];
+    if (!((*next_entry_ptr) & 0x1))
+        return;
 
-    l3_virtual_addr = extract_addr_from_page_entry(next_entry_ptr);
+    l3_virtual_addr = (u64 *)osmap(extract_addr_from_page_entry(next_entry_ptr));
     next_entry_ptr = &l3_virtual_addr[(addr & 0x007fc0000000) >> 30];
+    if (!((*next_entry_ptr) & 0x1))
+        return;
 
-    l2_virtual_addr = extract_addr_from_page_entry(next_entry_ptr);
+    l2_virtual_addr = (u64 *)osmap(extract_addr_from_page_entry(next_entry_ptr));
     next_entry_ptr = &l2_virtual_addr[(addr & 0x00003fe00000) >> 21];
+    if (!((*next_entry_ptr) & 0x1))
+        return;
 
-    l1_virtual_addr = extract_addr_from_page_entry(next_entry_ptr);
+    l1_virtual_addr = (u64 *)osmap(extract_addr_from_page_entry(next_entry_ptr));
     next_entry_ptr = &l1_virtual_addr[(addr & 0x0000001ff000) >> 12];
 
-    pfn = (u64)extract_addr_from_page_entry(next_entry_ptr);
+    if (!((*next_entry_ptr) & 0x1))
+        return;
+
+    pfn = extract_addr_from_page_entry(next_entry_ptr);
     os_pfn_free(USER_REG, pfn);
     *next_entry_ptr = 0;
+    // TLB flush
+    asm volatile ("invlpg (%0);" :: "r"(addr) : "memory");
 }
 
 long do_syscall(int syscall, u64 param1, u64 param2, u64 param3, u64 param4)
@@ -120,8 +131,8 @@ long do_syscall(int syscall, u64 param1, u64 param2, u64 param3, u64 param4)
                     return 0;
 
                 while (size > 0) {
-                    free_data_page(memory_segment->next_free - (1 << 12), current->pgd);
                     memory_segment->next_free -= (1 << 12);
+                    free_data_page(memory_segment->next_free, current->pgd);
                     size--;
                 }
                 return (memory_segment->next_free);
@@ -135,10 +146,15 @@ long do_syscall(int syscall, u64 param1, u64 param2, u64 param3, u64 param4)
 
 extern int handle_div_by_zero(void)
 {
-    u64 *rbp;
-    u64 rip = rbp[1];
+    u64 rbp, rip;
+    asm volatile ("movq %%rbp, %0" : "=r"(rbp));
+    u64 *rbp_ptr = (u64 *)rbp;
+    rip = rbp_ptr[1];
     printf("Div-by-zero detected at [%x]\n", rip);
-    return 0;
+    /*struct exec_context *current = get_current_ctx();*/
+    /*struct mm_segment *segment = &current->mms[MM_SEG_CODE];*/
+    /*printf("[DATA] start: %x, next_free: %x, end: %x\n", segment->start, segment->next_free, segment->end);*/
+    do_exit();
 }
 
 void initialize_page(u64 *page_virtual_addr)
@@ -225,11 +241,11 @@ void handle_mm_seg_stack_page_fault (struct mm_segment *segment, u64 addr, u64 p
     u64 *l4_virtual_addr = (u64 *)osmap(pgd);
     u64 *seg_data_page_entry_ptr = assign_page_table_pages(l4_virtual_addr, addr, segment->access_flags);
     assign_data_page(seg_data_page_entry_ptr, segment->access_flags, 0);
-  
 }
 
 extern int handle_page_fault(void)
 {
+    u64 *rbp, cr2, rip, error_code, rsp;
     asm volatile ("pushq %rax;"
                   "pushq %rbx;"
                   "pushq %rcx;"
@@ -243,9 +259,8 @@ extern int handle_page_fault(void)
                   "pushq %r12;"
                   "pushq %r13;"
                   "pushq %r14;"
-                  "pushq %r15");
+                  "pushq %r15;");
 
-    u64 *rbp, cr2, rip, error_code, rsp;
     asm volatile ("movq %%rbp, %0" : "=r"(rbp));
     asm volatile ("movq %%cr2, %0" : "=r"(cr2));
     asm volatile ("movq %%rsp, %0" : "=r"(rsp));
@@ -264,14 +279,14 @@ extern int handle_page_fault(void)
     /*printf("[STACK] start: %x, next_free: %x, end: %x\n", stack_mm->start, stack_mm->next_free, stack_mm->end);*/
 
 
-    if (cr2 >= data_mm->start && cr2 < data_mm->next_free)
+    if (cr2 >= data_mm->start && cr2 < data_mm->next_free && !(error_code & 0x1))
         handle_mm_seg_data_page_fault(data_mm, cr2, current->pgd);
     else if (cr2 >= ROdata_mm->start && cr2 < ROdata_mm->next_free)
         handle_mm_seg_rodata_page_fault(ROdata_mm, cr2, current->pgd);
     else if (cr2 >= stack_mm->start && cr2 < stack_mm->end)
         handle_mm_seg_stack_page_fault(stack_mm, cr2, current->pgd);
     else {
-        printf("Page Fault at RIP: %x, VA: %x, Error Code: %d\n", rip, cr2, error_code);
+        printf("[GemOS] Page Fault at RIP: %x, VA: %x, Error Code: %d\n", rip, cr2, error_code);
         do_exit();
     }
 
@@ -290,11 +305,10 @@ extern int handle_page_fault(void)
                   "popq %rdx;"
                   "popq %rcx;"
                   "popq %rbx;"
-                  "popq %rax;");
-
-    asm volatile ("movq %rbp, %rsp;"
+                  "popq %rax;"
+                  "movq %rbp, %rsp;"
                   "popq %rbp;"
                   "addq $8, %rsp;"
                   "iretq;");
-    return 0;
+
 }

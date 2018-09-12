@@ -77,6 +77,17 @@ void test_code()
     *ptr = 'A';
 
     /**(ptr + 4096) = 'A';*/
+
+    int x = 1/(1-1);
+}
+
+void tricky_test_code()
+{
+    char* ptr = ( char* ) expand(8, MAP_WR);
+	*(ptr + 40) = 'X';
+	write(ptr+40,1);
+    shrink(8, MAP_WR);
+    /**(ptr + 40) = 'A';*/
 }
 
 static int main()
@@ -87,6 +98,7 @@ static int main()
   i = *ptr;
 #endif
   test_code();
+  /*tricky_test_code();*/
   i = getpid();
   exit(-5);
   return 0;
