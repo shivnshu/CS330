@@ -306,7 +306,7 @@ main.Append(LIBPATH=['/nix/store/8c30dl4mmgm4rip1l08fvad9gca5sk2j-zlib-1.2.11/li
 # Add shared top-level headers
 main.Prepend(CPPPATH=Dir('include'))
 
-main.Append(CPPPATH=Dir('/nix/store/wm92zyin0gjjvha3kxg2x7xg19wbj686-zlib-1.2.11-dev/include'))
+main.Append(CPPPATH=Dir('/nix/store/0w330s2s7xiq31api8lfhydbc13896sb-zlib-1.2.11-dev/include'))
 
 if GetOption('verbose'):
     def MakeAction(action, string, *args, **kwargs):

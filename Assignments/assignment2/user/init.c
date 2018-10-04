@@ -68,13 +68,13 @@ void test_code()
     void *ptr1;
     char *ptr = (char *) expand(8, MAP_WR);
   
-    if (ptr == NULL)
-        write("FAILED\n", 7);
+    /*if (ptr == NULL)*/
+        /*write("FAILED\n", 7);*/
   
-    *(ptr + 8192) = 'A';
+    /**(ptr + 8192) = 'A';*/
   
     ptr1 = (char *) shrink(7, MAP_WR);
-    *ptr = 'A';
+    /**ptr = 'A';*/
 
     /**(ptr + 4096) = 'A';*/
 
