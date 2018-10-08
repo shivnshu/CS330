@@ -81,6 +81,7 @@ struct exec_context{
              u32 pending_signal_bitmap;      /*Pending signal bitmap*/
              void* sighandlers[MAX_SIGNALS]; /*Signal handler pointers to functions (in user space)*/
              u32 ticks_to_sleep;    /*Remaining ticks before sleep expires*/
+             u32 alarm_config_time;   /*Alarm ticks set by alarm() system call*/
              u32 ticks_to_alarm;   /*Remaining ticks before raising SIGALRM*/
 };
 
