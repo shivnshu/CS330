@@ -60,15 +60,29 @@ static long signal(int signo, unsigned long handler)
     return(_syscall2(SYSCALL_SIGNAL, signo, handler));
 }
 
-void signal_handler()
+static long alarm(int ticks)
 {
+    return(_syscall1(SYSCALL_ALARM, ticks));
+}
+
+int signal_handler()
+{
+    write("hello\n", 6);
     exit(0);
 }
 
 static int main()
 {
-    signal(1, (unsigned long)(&signal_handler));
+    /*
+    //signal(1, (unsigned long)(0x123456));
+    signal(0, (unsigned long)(&signal_handler));
     int i;
+    int *addr = (int *)0x4445555;
+    //*addr = 3;
     i = 10 / (10 - 10);
+    */
+    signal(2, (unsigned long)(&signal_handler));
+    alarm(10);
+    while (1);
     return 0;
 }
