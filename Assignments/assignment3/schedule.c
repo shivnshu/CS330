@@ -137,7 +137,7 @@ long invoke_sync_signal(int signo, u64 *ustackp, u64 *urip)
     }
     printf("DEBUG: %x\n", current->sighandlers[signo]);
     if (current->sighandlers[signo] != 0)
-        *(urip) = (u64)(current->sighandlers[signo]);
+        *urip = (u64)(current->sighandlers[signo]);
     else
         do_exit();
     /*

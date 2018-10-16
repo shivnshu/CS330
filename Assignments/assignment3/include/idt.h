@@ -44,8 +44,8 @@ struct gdt_entry{
                     u8  ac_byte;
                     u8 limit_high:4,
                        flags:4;
-                    u8  base_high;
-};
+                    u8  base_high;     
+}; 
 
 struct tss{
              u32 reserved;
@@ -57,7 +57,7 @@ struct tss{
              char rest[0];
 };
 
-extern void setup_idt();
+extern void setup_idt();        
 extern void setup_gdt_tss(struct IDTR *);
 extern void set_tss_stack_ptr(struct exec_context *);
 #endif

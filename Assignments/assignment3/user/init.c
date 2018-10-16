@@ -65,7 +65,7 @@ static long alarm(int ticks)
     return(_syscall1(SYSCALL_ALARM, ticks));
 }
 
-int signal_handler()
+static int signal_handler()
 {
     write("hello\n", 6);
     exit(0);
@@ -78,11 +78,10 @@ static int main()
     signal(0, (unsigned long)(&signal_handler));
     int i;
     int *addr = (int *)0x4445555;
-    //*addr = 3;
+    *addr = 3;
     i = 10 / (10 - 10);
     */
-    signal(2, (unsigned long)(&signal_handler));
-    alarm(10);
-    while (1);
+    signal(1, (unsigned long)(&signal_handler));
+    int i = 1/(2-2);
     return 0;
 }
