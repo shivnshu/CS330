@@ -46,7 +46,7 @@ struct osalloc_chunk{
                   u32 current_pfn;
                   struct list freelist;
                   char bitmap[16];   /*current page bitmap*/
-}; 
+};
 
 #define NODE_MEM_PAGES 100
 
@@ -66,7 +66,7 @@ static inline int get_mem_region(u32 pfn)
           return OS_DS_REG;
     else if (address >= REGION_OS_PT_START && address < REGION_USER_START)
            return OS_PT_REG;
-   return USER_REG;   
+   return USER_REG;
 }
 
 

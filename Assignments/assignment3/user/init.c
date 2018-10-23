@@ -65,23 +65,41 @@ static long alarm(int ticks)
     return(_syscall1(SYSCALL_ALARM, ticks));
 }
 
-static int signal_handler()
+static void sleep(int ticks)
 {
-    write("hello\n", 6);
-    exit(0);
+    _syscall1(SYSCALL_SLEEP, ticks);
+}
+
+static int sigfpe_signal_handler()
+{
+    write("Hello from the SIGFPE Handler\n", 30);
+    /* exit(0); */
+}
+
+static int sigsegv_signal_handler()
+{
+    write("Hello from the SIGSEG Handler\n", 30);
+    /* exit(0); */
+}
+
+static int alarm_custom_handler()
+{
+    write("I am alarmed.\n", 14);
 }
 
 static int main()
 {
-    /*
-    //signal(1, (unsigned long)(0x123456));
-    signal(0, (unsigned long)(&signal_handler));
-    int i;
-    int *addr = (int *)0x4445555;
-    *addr = 3;
-    i = 10 / (10 - 10);
-    */
-    signal(1, (unsigned long)(&signal_handler));
-    int i = 1/(2-2);
+    sleep(10);
+    /* signal(2, (u64)&alarm_custom_handler); */
+    /* alarm(5); */
+    /* while(1); */
+    /* signal(1, (unsigned long)&sigfpe_signal_handler); */
+    /* int i; */
+    /* i = 1; */
+    /* i /= 0; */
+    /* signal(0, (unsigned long)&sigsegv_signal_handler); */
+    /* int *ptr = (int *)0x1234; */
+    /* *ptr = 10; */
+    write("in the main\n", 12);
     return 0;
 }

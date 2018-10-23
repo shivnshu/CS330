@@ -16,7 +16,7 @@ enum process_state{
                        EXITING,
                        MAX_STATE
 };
-  
+
 extern long do_alarm(u32 ticks);
 extern long do_signal(int signo, unsigned long handler);
 extern long invoke_sync_signal(int signo, u64 *ustackp, u64 *urip);

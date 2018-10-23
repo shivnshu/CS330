@@ -4,7 +4,7 @@
 #include <types.h>
 
 /*
-Bit position starts from 0. For 32-bix values, 
+Bit position starts from 0. For 32-bix values,
 position can be 0...31
 */
 
@@ -37,6 +37,6 @@ extern void invoke_dsh();
 #define is_empty(l)  (!(l)->size)
 
 extern int enqueue_tail(struct list*, u64);
-extern struct node *dequeue_front(struct list *); 
+extern struct node *dequeue_front(struct list *);
 
 #endif
