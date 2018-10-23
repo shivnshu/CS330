@@ -10,46 +10,25 @@ static u64 numticks;
 static void save_current_context(u64 *rbp)
 {
     struct exec_context *current = get_current_ctx();
-    if (current == get_ctx_by_pid(0))
-        return;
-    /* current->regs.r15 = rbp[2]; */
-    /* current->regs.r14 = rbp[3]; */
-    /* current->regs.r13 = rbp[4]; */
-    /* current->regs.r12 = rbp[5]; */
-    /* current->regs.r11 = rbp[6]; */
-    /* current->regs.r10 = rbp[7]; */
-    /* current->regs.r9 = rbp[8]; */
-    /* current->regs.r8 = rbp[9]; */
-    /* current->regs.rbp = rbp[10]; */
-    /* current->regs.rdi = rbp[11]; */
-    /* current->regs.rsi = rbp[12]; */
-    /* current->regs.rdx = rbp[13]; */
-    /* current->regs.rcx = rbp[14]; */
-    /* current->regs.rbx = rbp[15]; */
+    current->regs.r15 = rbp[2];
+    current->regs.r14 = rbp[3];
+    current->regs.r13 = rbp[4];
+    current->regs.r12 = rbp[5];
+    current->regs.r11 = rbp[6];
+    current->regs.r10 = rbp[7];
+    current->regs.r9 = rbp[8];
+    current->regs.r8 = rbp[9];
+    current->regs.rbp = rbp[10];
+    current->regs.rdi = rbp[11];
+    current->regs.rsi = rbp[12];
+    current->regs.rdx = rbp[13];
+    current->regs.rcx = rbp[14];
+    current->regs.rbx = rbp[15];
     current->regs.entry_rip = rbp[16];
     current->regs.entry_cs = rbp[17];
     current->regs.entry_rflags = rbp[18];
     current->regs.entry_rsp = rbp[19];
     current->regs.entry_ss = rbp[20];
-    /* printf("HAHAH: %x\n", rbp[1]); */
-    /* printf("HAHAH: %x\n", rbp[2]); */
-    /* printf("HAHAH: %x\n", rbp[3]); */
-    /* printf("HAHAH: %x\n", rbp[4]); */
-    /* printf("HAHAH: %x\n", rbp[5]); */
-    /* printf("HAHAH: %x\n", rbp[6]); */
-    /* printf("HAHAH: %x\n", rbp[7]); */
-    /* printf("HAHAH: %x\n", rbp[8]); */
-    /* printf("HAHAH: %x\n", rbp[9]); */
-    /* printf("HAHAH: %x\n", rbp[10]); */
-    /* printf("HAHAH: %x\n", rbp[11]); */
-    /* printf("HAHAH: %x\n", rbp[12]); */
-    /* printf("HAHAH: %x\n", rbp[13]); */
-    /* printf("HAHAH: %x\n", rbp[14]); */
-    /* printf("HAHAH: %x\n", rbp[15]); */
-    /* printf("HAHAH: %x\n", rbp[16]); */
-    /* printf("HAHAH: %x\n", rbp[17]); */
-    /* printf("HAHAH: %x\n", rbp[18]); */
-    /* printf("HAHAH: %x\n", rbp[19]); */
 }
 
 static void schedule_context(struct exec_context *next)
@@ -63,22 +42,34 @@ static void schedule_context(struct exec_context *next)
     /*Your code for scheduling context*/
     next->state = RUNNING;
 
-    /* if (next == get_ctx_by_pid(0)) {  //swapper process */
-    /*     u64 *bottom_addr = (u64 *)osmap(next->os_stack_pfn); */
-    /*     printf("ADDDD: %x\n", bottom_addr); */
-    /*     int i; */
-    /*     for (i=0;i<512;++i) */
-    /*         printf("aAAAA: %x\n", bottom_addr[i]); */
+    if (next != get_ctx_by_pid(0)) {
+        asm volatile ("movq %0, %%r15" :: "r"(next->regs.r15));
+        asm volatile ("movq %0, %%r14" :: "r"(next->regs.r14));
+        asm volatile ("movq %0, %%r13" :: "r"(next->regs.r13));
+        asm volatile ("movq %0, %%r12" :: "r"(next->regs.r12));
+        asm volatile ("movq %0, %%r11" :: "r"(next->regs.r11));
+        asm volatile ("movq %0, %%r10" :: "r"(next->regs.r10));
+        asm volatile ("movq %0, %%r9" :: "r"(next->regs.r9));
+        asm volatile ("movq %0, %%r8" :: "r"(next->regs.r8));
+        asm volatile ("movq %0, %%rbp" :: "r"(next->regs.rbp));
+        asm volatile ("movq %0, %%rdi" :: "r"(next->regs.rdi));
+        asm volatile ("movq %0, %%rsi" :: "r"(next->regs.rsi));
+        asm volatile ("movq %0, %%rdx" :: "r"(next->regs.rdx));
+        asm volatile ("movq %0, %%rcx" :: "r"(next->regs.rcx));
+        asm volatile ("movq %0, %%rbx" :: "r"(next->regs.rbx));
+        asm volatile ("movq %0, %%rax" :: "r"(next->regs.rax));
+    }
 
-    /* } else { */
-        asm volatile ("pushq %0" :: "r"(next->regs.entry_ss));
-        asm volatile ("pushq %0" :: "r"(next->regs.entry_rsp));
-        asm volatile ("pushq %0" :: "r"(next->regs.entry_rflags));
-        asm volatile ("pushq %0" :: "r"(next->regs.entry_cs));
-        asm volatile ("pushq %0" :: "r"(next->regs.entry_rip));
-        asm volatile ("iretq");
-    /* } */
-    return;
+    asm volatile ("pushq %0" :: "r"(next->regs.entry_ss));
+    asm volatile ("pushq %0" :: "r"(next->regs.entry_rsp));
+    asm volatile ("pushq %0" :: "r"(next->regs.entry_rflags));
+    asm volatile ("pushq %0" :: "r"(next->regs.entry_cs));
+    asm volatile ("pushq %0" :: "r"(next->regs.entry_rip));
+
+    ack_irq();  /*acknowledge the interrupt, before calling iretq */
+
+    asm volatile("iretq;"
+                 :::"memory");
 }
 
 static struct exec_context *pick_next_context(struct exec_context *list)
@@ -86,6 +77,7 @@ static struct exec_context *pick_next_context(struct exec_context *list)
     struct exec_context *current = get_current_ctx();
     return NULL;
 }
+
 static void schedule()
 {
     /*
@@ -106,6 +98,7 @@ static void do_sleep_and_alarm_account_using_ctx(struct exec_context *ctx)
     if (ctx->ticks_to_sleep > 0) {
         ctx->ticks_to_sleep -= 1;
         if (ctx->ticks_to_sleep == 0) {
+            // Current context
             /* save_current_context(); */
             current->state = READY;
             schedule_context(ctx);
@@ -196,6 +189,7 @@ void handle_timer_tick()
                 "pop %%rbp;"
                 "iretq;"
                 :::"memory");
+
 }
 
 void do_exit()
@@ -256,7 +250,6 @@ long invoke_sync_signal(int signo, u64 *ustackp, u64 *urip)
             *urip = (u64)current->sighandlers[signo];
             *ustackp -= 8;
             *(u64 *)(*ustackp) = prev_urip;
-            printf("DDDDDDD: %x\n", prev_urip);
             /* *urip = (u64)(current->sighandlers[signo]); */
         }
         else
