@@ -68,21 +68,23 @@ static void schedule_context(struct exec_context *next)
 
     /* ack_irq(); */
 
-    asm volatile("mov  %0,%%r15" :: "r"(next->regs.r15):"memory");
-    asm volatile("mov  %0,%%r14" :: "r"(next->regs.r14):"memory");
-    asm volatile("mov  %0,%%r13" :: "r"(next->regs.r13):"memory");
-    asm volatile("mov  %0,%%r12" :: "r"(next->regs.r12):"memory");
-    asm volatile("mov  %0,%%r11" :: "r"(next->regs.r11):"memory");
-    asm volatile("mov  %0,%%r10" :: "r"(next->regs.r10):"memory");
-    asm volatile("mov %0,%%r9" :: "r"(next->regs.r9):"memory");
-    asm volatile("mov %0,%%r8" :: "r"(next->regs.r8):"memory");
-    asm volatile("mov  %0,%%rsi" :: "r"(next->regs.rsi):"memory");
-    asm volatile("mov  %0,%%rdi" :: "r"(next->regs.rdi):"memory");
-    asm volatile("mov  %0,%%rdx" :: "r"(next->regs.rdx):"memory");
-    asm volatile("mov  %0,%%rcx" :: "r"(next->regs.rcx):"memory");
-    asm volatile("mov  %0,%%rbx" :: "r"(next->regs.rbx):"memory");
-    asm volatile("mov  %0,%%rax" :: "r"(next->regs.rax):"memory");
-    asm volatile("mov %rbp,%rsp;pop %rbp;iretq;");
+    asm volatile("movq %0, %%r15" :: "r"(next->regs.r15):"memory");
+    asm volatile("movq %0, %%r14" :: "r"(next->regs.r14):"memory");
+    asm volatile("movq %0, %%r13" :: "r"(next->regs.r13):"memory");
+    asm volatile("movq %0, %%r12" :: "r"(next->regs.r12):"memory");
+    asm volatile("movq %0, %%r11" :: "r"(next->regs.r11):"memory");
+    asm volatile("movq %0, %%r10" :: "r"(next->regs.r10):"memory");
+    asm volatile("movq %0, %%r9" :: "r"(next->regs.r9):"memory");
+    asm volatile("movq %0, %%r8" :: "r"(next->regs.r8):"memory");
+    asm volatile("movq %0, %%rsi" :: "r"(next->regs.rsi):"memory");
+    asm volatile("movq %0, %%rdi" :: "r"(next->regs.rdi):"memory");
+    asm volatile("movq %0, %%rdx" :: "r"(next->regs.rdx):"memory");
+    asm volatile("movq %0, %%rcx" :: "r"(next->regs.rcx):"memory");
+    asm volatile("movq %0, %%rbx" :: "r"(next->regs.rbx):"memory");
+    asm volatile("movq %0, %%rax" :: "r"(next->regs.rax):"memory");
+    asm volatile("movq %rbp, %rsp;");
+    asm volatile ("popq %rbp;");
+    asm volatile ("iretq;");
 
 }
 
@@ -253,13 +255,21 @@ void do_exit()
     the next process. If the only process alive in system is swapper,
     invoke do_cleanup() to shutdown gem5 (by crashing it, huh!)
     */
-    /* struct exec_context *current = get_current_ctx(); */
-    /* current->state = UNUSED; */
-    /* os_pfn_free(USER_REG, current->os_stack_pfn); */
-    /* int count = 0; */
-    /* struct exec_context *list = get_ctx_list(); */
-
-    do_cleanup();  /*Call this conditionally, see comments above*/
+    struct exec_context *current = get_current_ctx();
+    current->state = UNUSED;
+    os_pfn_free(OS_PT_REG, current->os_stack_pfn);
+    int flag = 0;
+    struct exec_context *list = get_ctx_list();
+    for (int i=1;i<MAX_PROCESSES;++i) {
+        if (list[i].pid > 0 && list[i].state != UNUSED) {
+            flag = 1;
+            break;
+        }
+    }
+    if (flag)
+        schedule();
+    else
+        do_cleanup();  /*Call this conditionally, see comments above*/
 }
 
 /*system call handler for sleep*/
@@ -269,10 +279,6 @@ long do_sleep(u32 ticks)
     current->ticks_to_sleep = ticks;
     current->state = WAITING;
     struct exec_context *swapper_context = get_ctx_by_pid(0);
-    /* u64 *curr_rbp, *syscall_handler_rbp; */
-    /* asm volatile ("movq %%rbp, %0" : "=r"(curr_rbp)); */
-    /* syscall_handler_rbp = (u64 *)(*curr_rbp); */
-    /* save_current_context(syscall_handler_rbp); */
     save_current_context();
     schedule_context(swapper_context);
     return 0;
@@ -286,7 +292,7 @@ long do_clone(void *th_func, void *user_stack)
 {
     struct exec_context *current = get_current_ctx();
     struct exec_context *new_ctx = get_new_ctx();
-    new_ctx->os_stack_pfn = os_pfn_alloc(USER_REG);
+    new_ctx->os_stack_pfn = os_pfn_alloc(OS_PT_REG);
     u32 pid = new_ctx->pid;
     memcpy(new_ctx->name, current->name, CNAME_MAX);
     int index=0;
