@@ -10,10 +10,11 @@ static u64 numticks;
 static void save_current_context()
 {
     struct exec_context *current = get_current_ctx();
-    if (current->pid == 0)
+    if (current->pid == 0 || current->state == UNUSED)
         return;
 
     u64 *addr = (u64 *)osmap(current->os_stack_pfn);
+    printf("DEBUG: In save context PID: %d\n", current->pid);
     current->regs.entry_rip = addr[507];
     current->regs.entry_cs = addr[508];
     current->regs.entry_rflags = addr[509];
@@ -40,7 +41,11 @@ static void schedule_context(struct exec_context *next)
 {
     /*Your code goes in here. get_current_ctx() still returns the old context*/
     struct exec_context *current = get_current_ctx();
-    printf("schedluing: old pid = %d  new pid  = %d\n", current->pid, next->pid); /*XXX: Don't remove*/
+    printf("scheduling: old pid = %d  new pid  = %d\n", current->pid, next->pid); /*XXX: Don't remove*/
+
+    save_current_context();
+
+    next->state = RUNNING;
 
     if (next->pid == 0) {
         set_tss_stack_ptr(next);
@@ -90,16 +95,31 @@ static void schedule_context(struct exec_context *next)
 
 static struct exec_context *pick_next_context(struct exec_context *list)
 {
+    printf("In pick_next_context\n");
     struct exec_context *current = get_current_ctx();
+    int i, pid;
+    pid = current->pid;
+    for (i=1;i<MAX_PROCESSES;++i) {
+        if (list[i+pid].state == READY)
+            break;
+    }
+    if (i < MAX_PROCESSES)
+        return get_ctx_by_pid(i+pid);
     return NULL;
 }
+
 static void schedule()
 {
+    printf("DEBUG: In schedule\n");
     struct exec_context *next;
     struct exec_context *current = get_current_ctx();
     struct exec_context *list = get_ctx_list();
     next = pick_next_context(list);
-    schedule_context(next);
+    printf("DEBUG: after pick_next_context In schedule\n");
+    if (next != NULL) {
+        printf("Picked process pid: %d\n", next->pid);
+        schedule_context(next);
+    }
 }
 
 static void do_sleep_and_alarm_account()
@@ -174,9 +194,13 @@ void handle_timer_tick()
     }
 
     if (i < MAX_PROCESSES) {
-        printf("schedluing: old pid = %d  new pid  = %d\n", current->pid, next->pid); /*XXX: Don't remove*/
+        printf("scheduling: old pid = %d  new pid  = %d\n", current->pid, next->pid); /*XXX: Don't remove*/
 
+        save_current_context();
+
+        current->state = READY;
         next->state = RUNNING;
+
         if (next->pid == 0) {
             set_tss_stack_ptr(next);
             set_current_ctx(next);
@@ -203,26 +227,26 @@ void handle_timer_tick()
 
         ack_irq();
 
-        asm volatile("mov  %0,%%r15" :: "r"(next->regs.r15):"memory");
-        asm volatile("mov  %0,%%r14" :: "r"(next->regs.r14):"memory");
-        asm volatile("mov  %0,%%r13" :: "r"(next->regs.r13):"memory");
-        asm volatile("mov  %0,%%r12" :: "r"(next->regs.r12):"memory");
-        asm volatile("mov  %0,%%r11" :: "r"(next->regs.r11):"memory");
-        asm volatile("mov  %0,%%r10" :: "r"(next->regs.r10):"memory");
-        asm volatile("mov %0,%%r9" :: "r"(next->regs.r9):"memory");
-        asm volatile("mov %0,%%r8" :: "r"(next->regs.r8):"memory");
-        asm volatile("mov  %0,%%rsi" :: "r"(next->regs.rsi):"memory");
-        asm volatile("mov  %0,%%rdi" :: "r"(next->regs.rdi):"memory");
-        asm volatile("mov  %0,%%rdx" :: "r"(next->regs.rdx):"memory");
-        asm volatile("mov  %0,%%rcx" :: "r"(next->regs.rcx):"memory");
-        asm volatile("mov  %0,%%rbx" :: "r"(next->regs.rbx):"memory");
-        asm volatile("mov  %0,%%rax" :: "r"(next->regs.rax):"memory");
-        asm volatile("mov %rbp, %rsp;");
-        asm volatile("pop %rbp;");
+        asm volatile("movq %0, %%r15" :: "r"(next->regs.r15):"memory");
+        asm volatile("movq %0, %%r14" :: "r"(next->regs.r14):"memory");
+        asm volatile("movq %0, %%r13" :: "r"(next->regs.r13):"memory");
+        asm volatile("movq %0, %%r12" :: "r"(next->regs.r12):"memory");
+        asm volatile("movq %0, %%r11" :: "r"(next->regs.r11):"memory");
+        asm volatile("movq %0, %%r10" :: "r"(next->regs.r10):"memory");
+        asm volatile("movq %0, %%r9" :: "r"(next->regs.r9):"memory");
+        asm volatile("movq %0, %%r8" :: "r"(next->regs.r8):"memory");
+        asm volatile("movq %0, %%rsi" :: "r"(next->regs.rsi):"memory");
+        asm volatile("movq %0, %%rdi" :: "r"(next->regs.rdi):"memory");
+        asm volatile("movq %0, %%rdx" :: "r"(next->regs.rdx):"memory");
+        asm volatile("movq %0, %%rcx" :: "r"(next->regs.rcx):"memory");
+        asm volatile("movq %0, %%rbx" :: "r"(next->regs.rbx):"memory");
+        asm volatile("movq %0, %%rax" :: "r"(next->regs.rax):"memory");
+        asm volatile("movq %rbp, %rsp;");
+        asm volatile("popq %rbp;");
         asm volatile ("iretq;");
-
     }
 
+    printf("DEBUG: Exiting time interrupt handler normally\n");
     ack_irq();  /*acknowledge the interrupt, before calling iretq */
 
     asm volatile ("movq %0, %%rsp" :: "r"(rsp));
@@ -256,18 +280,22 @@ void do_exit()
     invoke do_cleanup() to shutdown gem5 (by crashing it, huh!)
     */
     struct exec_context *current = get_current_ctx();
+    printf("DEBUG: In do_exit(). Exiting PID: %d\n", current->pid);
     current->state = UNUSED;
     os_pfn_free(OS_PT_REG, current->os_stack_pfn);
-    int flag = 0;
+    int flag = 0, i;
     struct exec_context *list = get_ctx_list();
-    for (int i=1;i<MAX_PROCESSES;++i) {
+    for (i=1;i<MAX_PROCESSES;++i) {
         if (list[i].pid > 0 && list[i].state != UNUSED) {
             flag = 1;
+            /* printf("AAAAA: %d\n", list[i].pid); */
             break;
         }
     }
-    if (flag)
+    if (flag) {
+        printf("DEBUG: In do_exit() decided to schedule\n");
         schedule();
+    }
     else
         do_cleanup();  /*Call this conditionally, see comments above*/
 }
@@ -279,7 +307,6 @@ long do_sleep(u32 ticks)
     current->ticks_to_sleep = ticks;
     current->state = WAITING;
     struct exec_context *swapper_context = get_ctx_by_pid(0);
-    save_current_context();
     schedule_context(swapper_context);
     return 0;
 }
@@ -290,6 +317,8 @@ long do_sleep(u32 ticks)
 */
 long do_clone(void *th_func, void *user_stack)
 {
+    printf("DEBUG: In clone\n");
+    printf("DEBUG: th_func: %x, user_stack: %x\n", th_func, user_stack);
     struct exec_context *current = get_current_ctx();
     struct exec_context *new_ctx = get_new_ctx();
     new_ctx->os_stack_pfn = os_pfn_alloc(OS_PT_REG);
@@ -313,7 +342,39 @@ long do_clone(void *th_func, void *user_stack)
     new_ctx->regs.entry_rsp = (u64)user_stack;
     new_ctx->regs.entry_ss = 0x2b;
 
+    new_ctx->regs.r15 = current->regs.r15;
+    new_ctx->regs.r14 = current->regs.r14;
+    new_ctx->regs.r13 = current->regs.r13;
+    new_ctx->regs.r12 = current->regs.r12;
+    new_ctx->regs.r11 = current->regs.r11;
+    new_ctx->regs.r10 = current->regs.r10;
+    new_ctx->regs.r9 = current->regs.r9;
+    new_ctx->regs.r8 = current->regs.r8;
+    new_ctx->regs.rbp = current->regs.rbp;
+    new_ctx->regs.rdi = current->regs.rdi;
+    new_ctx->regs.rsi = current->regs.rsi;
+    new_ctx->regs.rdx = current->regs.rdx;
+    new_ctx->regs.rcx = current->regs.rcx;
+    new_ctx->regs.rbx = current->regs.rbx;
+    new_ctx->regs.rax = current->regs.rax;
 
+    new_ctx->type = current->type;
+    new_ctx->used_mem = 0;
+    new_ctx->pgd = current->pgd;
+    new_ctx->os_rsp = current->os_rsp;
+
+    new_ctx->mms[MM_SEG_CODE] = current->mms[MM_SEG_CODE];
+    new_ctx->mms[MM_SEG_RODATA] = current->mms[MM_SEG_RODATA];
+    new_ctx->mms[MM_SEG_DATA] = current->mms[MM_SEG_DATA];
+    new_ctx->mms[MM_SEG_STACK] = current->mms[MM_SEG_STACK];
+
+    new_ctx->pending_signal_bitmap = current->pending_signal_bitmap;
+
+    new_ctx->ticks_to_sleep = 0;
+    new_ctx->alarm_config_time = 0;
+    new_ctx->ticks_to_alarm = 0;
+
+    new_ctx->state = READY;
 }
 
 long invoke_sync_signal(int signo, u64 *ustackp, u64 *urip)
@@ -332,7 +393,6 @@ long invoke_sync_signal(int signo, u64 *ustackp, u64 *urip)
         *urip = (u64)current->sighandlers[signo];
         *ustackp -= 8;
         *(u64 *)(*ustackp) = prev_urip;
-        /* printf("DDDDDD: %x\n", prev_urip); */
     } else
     {
         if (current->sighandlers[signo] != 0) {

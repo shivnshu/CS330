@@ -1,5 +1,7 @@
 #include<init.h>
 #include<lib.h>
+#include<context.h>
+#include<memory.h>
 static void exit(int);
 static int main(void);
 
@@ -70,6 +72,16 @@ static void sleep(int ticks)
     _syscall1(SYSCALL_SLEEP, ticks);
 }
 
+static void *expand (u32 size, int flags)
+{
+    return (void *)(_syscall2(SYSCALL_EXPAND, size, flags));
+}
+
+static int clone(unsigned long handler, unsigned long user_stack)
+{
+    return (_syscall2(SYSCALL_CLONE, handler, user_stack));
+}
+
 static int sigfpe_signal_handler()
 {
     write("Hello from the SIGFPE Handler\n", 30);
@@ -87,9 +99,22 @@ static int alarm_custom_handler()
     write("I am alarmed.\n", 14);
 }
 
+static void clone_handler()
+{
+    write("I am clone\n", 11);
+    exit(0);
+}
+
+void initialize(u64 *ptr, int limit)
+{
+    int i;
+    for (i=0;i<limit;++i)
+        ptr[i] = 0;
+}
+
 static int main()
 {
-    sleep(10);
+    /* sleep(10); */
     /* alarm(5); */
     /* while(1); */
     /* signal(1, (unsigned long)&sigfpe_signal_handler); */
@@ -99,6 +124,12 @@ static int main()
     /* signal(0, (unsigned long)&sigsegv_signal_handler); */
     /* int *ptr = (int *)0x1234; */
     /* *ptr = 10; */
-    write("in the main\n", 12);
+    int num_pages = 1;
+    u64 *ptr = (u64 *)expand(num_pages, MAP_WR);
+    initialize(ptr, 512*num_pages);
+    clone((unsigned long)&clone_handler, (unsigned long)&ptr[512*num_pages-1]);
+    write("In the main\n", 12);
+    sleep(5);
+    write("In the main again\n", 18);
     return 0;
 }
