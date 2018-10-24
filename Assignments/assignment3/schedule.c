@@ -45,7 +45,7 @@ static void schedule_context(struct exec_context *next)
     if (next->pid == 0) {
         set_tss_stack_ptr(next);
         set_current_ctx(next);
-        ack_irq();
+        /* ack_irq(); */
         asm volatile ("pushq %0" :: "r"(next->regs.entry_ss));
         asm volatile ("pushq %0" :: "r"(next->regs.entry_rsp));
         asm volatile ("pushq %0" :: "r"(next->regs.entry_rflags));
@@ -66,7 +66,7 @@ static void schedule_context(struct exec_context *next)
     set_tss_stack_ptr(next);
     set_current_ctx(next);
 
-    ack_irq();
+    /* ack_irq(); */
 
     asm volatile("mov  %0,%%r15" :: "r"(next->regs.r15):"memory");
     asm volatile("mov  %0,%%r14" :: "r"(next->regs.r14):"memory");
@@ -100,32 +100,20 @@ static void schedule()
     schedule_context(next);
 }
 
-static void do_sleep_and_alarm_account_using_ctx(struct exec_context *ctx)
-{
-    struct exec_context *current = get_current_ctx();
-    if (ctx->ticks_to_alarm > 0) {
-        ctx->ticks_to_alarm -= 1;
-    }
-    if (ctx->ticks_to_sleep > 0) {
-        ctx->ticks_to_sleep -= 1;
-        if (ctx->ticks_to_sleep == 0) {
-            /* save_current_context(); */
-            current->state = READY;
-            schedule_context(ctx);
-        }
-    }
-}
-
 static void do_sleep_and_alarm_account()
 {
     /*All processes in sleep() must decrement their sleep count*/
+    struct exec_context *current = get_current_ctx();
     struct exec_context *ctx;
     int i;
     for (i=0;i<MAX_PROCESSES;++i) {
         ctx = get_ctx_by_pid(i);
-        if (ctx == NULL || ctx->state != WAITING)
+        if (ctx == current)
             continue;
-        do_sleep_and_alarm_account_using_ctx(ctx);
+        if (ctx->ticks_to_sleep > 0)
+            ctx->ticks_to_sleep--;
+        if (ctx->ticks_to_alarm > 0)
+            ctx->ticks_to_alarm;
     }
 }
 
@@ -158,10 +146,10 @@ void handle_timer_tick()
 
     printf("Got a tick. #ticks = %u\n", numticks++);   /*XXX Do not modify this line*/
 
-    // For sleeping processes
     do_sleep_and_alarm_account();
 
     struct exec_context *current = get_current_ctx();
+    printf("Current PID: %d\n", current->pid);
     printf("\nCurrent ticks_to_alarm is %d\n", current->ticks_to_alarm);
     if (current->ticks_to_alarm > 0)
         current->ticks_to_alarm--;
@@ -174,6 +162,64 @@ void handle_timer_tick()
             invoke_sync_signal(SIGALRM, &rbp[4], &rbp[1]);
             current->ticks_to_alarm = current->alarm_config_time;
         }
+
+    struct exec_context *next;
+    int i;
+    for (i=0;i<MAX_PROCESSES;++i) {
+        next = get_ctx_by_pid(i);
+        if (next->state == WAITING && next->ticks_to_sleep == 0)
+            break;
+    }
+
+    if (i < MAX_PROCESSES) {
+        printf("schedluing: old pid = %d  new pid  = %d\n", current->pid, next->pid); /*XXX: Don't remove*/
+
+        next->state = RUNNING;
+        if (next->pid == 0) {
+            set_tss_stack_ptr(next);
+            set_current_ctx(next);
+            ack_irq();
+            asm volatile ("pushq %0" :: "r"(next->regs.entry_ss));
+            asm volatile ("pushq %0" :: "r"(next->regs.entry_rsp));
+            asm volatile ("pushq %0" :: "r"(next->regs.entry_rflags));
+            asm volatile ("pushq %0" :: "r"(next->regs.entry_cs));
+            asm volatile ("pushq %0" :: "r"(next->regs.entry_rip));
+            asm volatile ("iretq");
+        }
+
+        u64 *rbp;
+        asm volatile ("movq %%rbp, %0" : "=r"(rbp));
+        *(rbp)   = next->regs.rbp;
+        *(rbp+1) = next->regs.entry_rip;
+        *(rbp+2) = next->regs.entry_cs;
+        *(rbp+3) = next->regs.entry_rflags;
+        *(rbp+4) = next->regs.entry_rsp;
+        *(rbp+5) = next->regs.entry_ss;
+
+        set_tss_stack_ptr(next);
+        set_current_ctx(next);
+
+        ack_irq();
+
+        asm volatile("mov  %0,%%r15" :: "r"(next->regs.r15):"memory");
+        asm volatile("mov  %0,%%r14" :: "r"(next->regs.r14):"memory");
+        asm volatile("mov  %0,%%r13" :: "r"(next->regs.r13):"memory");
+        asm volatile("mov  %0,%%r12" :: "r"(next->regs.r12):"memory");
+        asm volatile("mov  %0,%%r11" :: "r"(next->regs.r11):"memory");
+        asm volatile("mov  %0,%%r10" :: "r"(next->regs.r10):"memory");
+        asm volatile("mov %0,%%r9" :: "r"(next->regs.r9):"memory");
+        asm volatile("mov %0,%%r8" :: "r"(next->regs.r8):"memory");
+        asm volatile("mov  %0,%%rsi" :: "r"(next->regs.rsi):"memory");
+        asm volatile("mov  %0,%%rdi" :: "r"(next->regs.rdi):"memory");
+        asm volatile("mov  %0,%%rdx" :: "r"(next->regs.rdx):"memory");
+        asm volatile("mov  %0,%%rcx" :: "r"(next->regs.rcx):"memory");
+        asm volatile("mov  %0,%%rbx" :: "r"(next->regs.rbx):"memory");
+        asm volatile("mov  %0,%%rax" :: "r"(next->regs.rax):"memory");
+        asm volatile("mov %rbp, %rsp;");
+        asm volatile("pop %rbp;");
+        asm volatile ("iretq;");
+
+    }
 
     ack_irq();  /*acknowledge the interrupt, before calling iretq */
 
@@ -207,6 +253,12 @@ void do_exit()
     the next process. If the only process alive in system is swapper,
     invoke do_cleanup() to shutdown gem5 (by crashing it, huh!)
     */
+    /* struct exec_context *current = get_current_ctx(); */
+    /* current->state = UNUSED; */
+    /* os_pfn_free(USER_REG, current->os_stack_pfn); */
+    /* int count = 0; */
+    /* struct exec_context *list = get_ctx_list(); */
+
     do_cleanup();  /*Call this conditionally, see comments above*/
 }
 
@@ -232,6 +284,30 @@ long do_sleep(u32 ticks)
 */
 long do_clone(void *th_func, void *user_stack)
 {
+    struct exec_context *current = get_current_ctx();
+    struct exec_context *new_ctx = get_new_ctx();
+    new_ctx->os_stack_pfn = os_pfn_alloc(USER_REG);
+    u32 pid = new_ctx->pid;
+    memcpy(new_ctx->name, current->name, CNAME_MAX);
+    int index=0;
+    while (new_ctx->name[index] != '\0')
+        index++;
+    if (pid < 10) {
+        new_ctx->name[index++] = (pid + '0');
+        new_ctx->name[index] = '\0';
+    } else {
+        new_ctx->name[index++] = '1';
+        new_ctx->name[index++] = pid%10 + '0';
+        new_ctx->name[index] = '\0';
+    }
+
+    new_ctx->regs.entry_rip = (u64)th_func;
+    new_ctx->regs.entry_cs = 0x23;
+    new_ctx->regs.entry_rflags = current->regs.entry_rflags;
+    new_ctx->regs.entry_rsp = (u64)user_stack;
+    new_ctx->regs.entry_ss = 0x2b;
+
+
 }
 
 long invoke_sync_signal(int signo, u64 *ustackp, u64 *urip)
