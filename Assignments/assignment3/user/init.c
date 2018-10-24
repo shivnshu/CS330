@@ -90,16 +90,6 @@ static int alarm_custom_handler()
 static int main()
 {
     sleep(10);
-    /* signal(2, (u64)&alarm_custom_handler); */
-    /* alarm(5); */
-    /* while(1); */
-    /* signal(1, (unsigned long)&sigfpe_signal_handler); */
-    /* int i; */
-    /* i = 1; */
-    /* i /= 0; */
-    /* signal(0, (unsigned long)&sigsegv_signal_handler); */
-    /* int *ptr = (int *)0x1234; */
-    /* *ptr = 10; */
     write("in the main\n", 12);
     return 0;
 }
