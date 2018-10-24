@@ -63,9 +63,10 @@ static void schedule_context(struct exec_context *next)
     *(rbp+4) = next->regs.entry_rsp;
     *(rbp+5) = next->regs.entry_ss;
 
-    ack_irq();
     set_tss_stack_ptr(next);
     set_current_ctx(next);
+
+    ack_irq();
 
     asm volatile("mov  %0,%%r15" :: "r"(next->regs.r15):"memory");
     asm volatile("mov  %0,%%r14" :: "r"(next->regs.r14):"memory");
@@ -172,8 +173,6 @@ void handle_timer_tick()
             printf("RIP: %x, RSP: %x\n", rbp[1], rbp[4]);
             invoke_sync_signal(SIGALRM, &rbp[4], &rbp[1]);
             current->ticks_to_alarm = current->alarm_config_time;
-            // Clear pending bit
-            /* current->pending_signal_bitmap ^= (1 << SIGALRM); */
         }
 
     ack_irq();  /*acknowledge the interrupt, before calling iretq */
@@ -218,11 +217,10 @@ long do_sleep(u32 ticks)
     current->ticks_to_sleep = ticks;
     current->state = WAITING;
     struct exec_context *swapper_context = get_ctx_by_pid(0);
-    u64 *curr_rbp, *syscall_handler_rbp;
-    asm volatile ("movq %%rbp, %0" : "=r"(curr_rbp));
-    syscall_handler_rbp = (u64 *)(*curr_rbp);
+    /* u64 *curr_rbp, *syscall_handler_rbp; */
+    /* asm volatile ("movq %%rbp, %0" : "=r"(curr_rbp)); */
+    /* syscall_handler_rbp = (u64 *)(*curr_rbp); */
     /* save_current_context(syscall_handler_rbp); */
-    printf("PPPPPPPP: %x\n", syscall_handler_rbp);
     save_current_context();
     schedule_context(swapper_context);
     return 0;
@@ -275,7 +273,6 @@ long do_signal(int signo, unsigned long handler)
     printf("\nCalled do_signal with %d signal number\n", signo);
     // current->pending_signal_bitmap |= 1 << signo;
     handlers[signo] = handler;
-    //printf("DEBUG: bitmap: %d -> handler: %x\n", current->pending_signal_bitmap, current->sighandlers[signo]);
     return 0;
 }
 
