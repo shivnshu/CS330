@@ -15,7 +15,7 @@ struct object *objs;
                          (x) = mmap(NULL, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);\
                          if((x) == MAP_FAILED)\
                               (x)=NULL;\
-                     }while(0); 
+                     }while(0);
 #define free_4k(x) munmap((x), BLOCK_SIZE)
 
 #ifdef CACHE         // CACHED implementation
@@ -38,7 +38,7 @@ static int find_read_cached(struct objfs_state *objfs, struct object *obj, char 
               if(read_block(objfs, obj->id, cache_ptr) < 0)
                        return -1;
               obj->cache_index = obj->id;
-             
+
          }
          memcpy(user_buf, cache_ptr, size);
          return 0;
@@ -51,7 +51,7 @@ static int find_write_cached(struct objfs_state *objfs, struct object *obj, cons
               if(read_block(objfs, obj->id, cache_ptr) < 0)
                        return -1;
               obj->cache_index = obj->id;
-             
+
          }
          memcpy(cache_ptr, user_buf, size);
          obj->dirty = 1;
@@ -118,8 +118,8 @@ long find_object_id(const char *key, struct objfs_state *objfs)
           if(obj->id && !strcmp(obj->key, key))
               return obj->id;
           obj++;
-    }      
-    return -1;   
+    }
+    return -1;
 }
 
 /*
@@ -133,7 +133,7 @@ long create_object(const char *key, struct objfs_state *objfs)
 {
     int ctr;
     struct object *obj = objs;
-    struct object *free = NULL; 
+    struct object *free = NULL;
     for(ctr=0; ctr < MAX_OBJS; ++ctr){
           if(!obj->id && !free){
                 free = obj;
@@ -143,12 +143,12 @@ long create_object(const char *key, struct objfs_state *objfs)
                 return -1;
           }
           obj++;
-    }      
-    
+    }
+
     if(!free){
                dprintf("%s: objstore full\n", __func__);
                return -1;
-    } 
+    }
     strcpy(free->key, key);
     init_object_cached(obj);
     return free->id;
@@ -182,21 +182,29 @@ long destroy_object(const char *key, struct objfs_state *objfs)
                return 0;
           }
           obj++;
-    }      
+    }
     return -1;
 }
 
 /*
   Renames a new object with obj.key=key. Object ID must be >=2.
-  Must check for duplicates.  
+  Must check for duplicates.
   Return value: Success --> object ID of the newly created object
                 Failure --> -1
 */
 
 long rename_object(const char *key, const char *newname, struct objfs_state *objfs)
 {
-   
-   return -1;
+   struct object *obj;
+   long objid;
+   if((objid = find_object_id(key, objfs)) < 0)
+        return -1;
+   obj = objs + objid - 2;
+   if(strlen(newname) > 32)
+      return -1;
+   strcpy(obj->key, newname);
+   obj->dirty = 1;
+   return 0;
 }
 
 /*
@@ -213,7 +221,7 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
         return -1;
    dprintf("Doing write size = %d\n", size);
    if(find_write_cached(objfs, obj, buf, size) < 0)
-       return -1; 
+       return -1;
    obj->size = size;
    return size;
 }
@@ -232,14 +240,14 @@ long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs)
        return -1;
    dprintf("Doing read size = %d\n", size);
    if(find_read_cached(objfs, obj, buf, size) < 0)
-       return -1; 
+       return -1;
    return size;
 }
 
 /*
   Reads the object metadata for obj->id = objid.
   Fillup buf->st_size and buf->st_blocks correctly
-  See man 2 stat 
+  See man 2 stat
 */
 int fillup_size_details(struct stat *buf)
 {

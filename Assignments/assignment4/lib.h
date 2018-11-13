@@ -28,17 +28,17 @@ struct objfs_state{
     struct stat def_fstat;
     struct stat def_dirstat;
     char *cache;
-    int cachesize;              
+    int cachesize;
     void *objstore_data;
-}; 
+};
 
 extern int do_init(struct objfs_state *objfs);
 extern int read_block(struct objfs_state *objfs, long block_offset, char *buf);
 extern int write_block(struct objfs_state *objfs, long block_offset, char *buf);
 
 /*Object interface*/
-extern int  objstore_init(struct objfs_state *objfs);   
-extern int  objstore_destroy(struct objfs_state *objfs);   
+extern int  objstore_init(struct objfs_state *objfs);
+extern int  objstore_destroy(struct objfs_state *objfs);
 extern long find_object_id(const char *, struct objfs_state *);
 extern long create_object(const char *, struct objfs_state *);
 extern long release_object(int objid, struct objfs_state *objfs);

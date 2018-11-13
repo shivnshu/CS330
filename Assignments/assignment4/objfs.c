@@ -1,11 +1,11 @@
 /*
-     This is a template code to implement a persistent object store as part of an 
+     This is a template code to implement a persistent object store as part of an
      an assignment in the OS course (CS330) at IIT Kanpur
 */
 
 #include "lib.h"
 #define ROOT_OBJID 1
-    
+
 static struct objfs_state *objfs;
 
 
@@ -14,18 +14,18 @@ static struct objfs_state *objfs;
 
 /** Get file attributes.
  *
- * Similar to stat().  
+ * Similar to stat().
  * Relevant fields to be filled up are as follows
  * - st_ino: is the unique object ID
- * - st_size: object size in bytes 
+ * - st_size: object size in bytes
  */
 int objfs_getattr(const char *key, struct stat *statbuf)
 {
     int retval;
     dprintf("%s: key=%s\n", __func__, key);
-    
+
     if(!strcmp(key, "/")){
-           *statbuf = objfs->def_dirstat; 
+           *statbuf = objfs->def_dirstat;
            statbuf->st_ino = ROOT_OBJID;
     }else{
            *statbuf = objfs->def_fstat;
@@ -37,7 +37,7 @@ int objfs_getattr(const char *key, struct stat *statbuf)
                 return -EBADF;
     }
     statbuf->st_uid = getuid();
-    statbuf->st_gid = getgid(); 
+    statbuf->st_gid = getgid();
     return 0;
 }
 
@@ -55,8 +55,9 @@ int objfs_unlink(const char *key)
 int objfs_rename_key(const char *oldkey, const char *newkey)
 {
     dprintf("%s: oldkey=%s\n", __func__, oldkey);
-    rename_object(oldkey, newkey, objfs); 
-    return -EINVAL;
+    if(rename_object(oldkey+1, newkey+1, objfs) < 0)
+        return -EINVAL;
+    return 0;
 }
 
 /*
@@ -73,7 +74,7 @@ int objfs_create (const char *key, mode_t mode, struct fuse_file_info *fi)
     return 0;
 }
 
-/* 
+/*
  * Open a object with key = key. Fill up the object handle in fi->fh.
  * Read/Write/Release will come with the same fi->fh
  */
@@ -103,7 +104,7 @@ int objfs_read(const char *key, char *buf, size_t size, off_t offset, struct fus
     return retval;
 }
 
-/** 
+/**
    Write data to an object
  */
 int objfs_write(const char *key, const char *buf, size_t size, off_t offset,
@@ -159,7 +160,7 @@ int objfs_release(const char *key, struct fuse_file_info *fi)
 void *objfs_init(struct fuse_conn_info *conn)
 {
    dprintf("%s\n", __func__);
-   objstore_init(objfs); 
+   objstore_init(objfs);
    return objfs;
 }
 
@@ -173,7 +174,7 @@ void *objfs_init(struct fuse_conn_info *conn)
 void objfs_destroy(void *userdata)
 {
     dprintf("%s\n", __func__);
-    objstore_destroy(objfs); 
+    objstore_destroy(objfs);
     fclose(objfs->logfd);
     close(objfs->blkdev);
     munmap(objfs->cache, CACHE_SIZE);
@@ -183,19 +184,19 @@ void objfs_destroy(void *userdata)
 #if 0
 /*
    Do not change the following code. Note that objid = 0 is the
-   root directory. Don't use it. 
-*/	
+   root directory. Don't use it.
+*/
 
 int objfs_opendir (const char *key, struct fuse_file_info *fi)
 {
     dprintf("%s: key=%s\n", __func__, key);
     fi->fh = 0;
-    return 0;  
+    return 0;
 }
 int objfs_releasedir(const char *key, struct fuse_file_info *fi)
 {
     dprintf("%s: key=%s\n", __func__, key);
-    return 0;  
+    return 0;
 }
 
 int objfs_readdir(const char *key, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
@@ -217,6 +218,7 @@ static struct fuse_operations objfs_operations = {
   .release = objfs_release,
   .init = objfs_init,
   .destroy = objfs_destroy,
+  .rename = objfs_rename_key,
 //  .opendir = objfs_opendir,
 //  .readdir = objfs_readdir,
 //  .releasedir = objfs_releasedir,
@@ -228,7 +230,7 @@ int main(int argc, char *argv[])
     int retval;
 
     printf("Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
-    
+
     if ((argc < 2)){
 	printf("Usage: %s [mount point]\n", argv[0]);
         exit(-1);
@@ -244,7 +246,7 @@ int main(int argc, char *argv[])
 	printf("Block device initialization failed!\n");
 	exit(-1);
     }
-         
+
     printf("%s\n", __func__);
     retval = fuse_main(argc, argv, &objfs_operations, objfs);
     printf("fuse main returned %d\n", retval);
