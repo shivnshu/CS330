@@ -74,28 +74,41 @@ unsigned int hash(const char *str)
     return hash % 1000000;
 }
 
-unsigned int get_free_cache_page(struct objfs_state *);
+unsigned int get_LRU_free_cache_page(struct objfs_state *);
 
 #ifdef CACHE         // CACHED implementation
+// Read the cached page OR
+// Read the block and then cache it
 static int read_cached(struct objfs_state *objfs, int block_num, char *user_buf)
 {
-    if (sobject->block_bitmap[block_num] <= 1)
-        return -1;
-    int cache_index = sobject->block_bitmap[block_num];
-    char *cache_addr = objfs->cache + (cache_index << 12);
+    int cache_index;
+    char *cache_addr;
+    if (sobject->block_bitmap[block_num] <= 1) {
+        cache_index = get_LRU_free_cache_page(objfs);
+        cache_addr = objfs->cache + (cache_index << 12);
+        sobject->cache_bitmap[cache_index] = block_num;
+        sobject->block_bitmap[block_num] = cache_index;
+        sobject->dirty_flag[cache_index] = 0;
+        read_block(objfs, block_num, user_buf);
+        strncpy(cache_addr, user_buf, BLOCK_SIZE);
+        return 0;
+    }
+    cache_index = sobject->block_bitmap[block_num];
+    cache_addr = objfs->cache + (cache_index << 12);
     strncpy(user_buf, cache_addr, BLOCK_SIZE);
     return 0;
 }
-/*Find the object in the cache and update it*/
+// Write to buffer
 static int write_cached(struct objfs_state *objfs, int block_num, char *user_buf)
 {
     int cache_index;
     if (sobject->block_bitmap[block_num] > 1) {
         cache_index = sobject->block_bitmap[block_num];
     } else {
-        cache_index = get_free_cache_page(objfs);
+        cache_index = get_LRU_free_cache_page(objfs);
         // Since cache_index > 1
         sobject->block_bitmap[block_num] = cache_index;
+        sobject->cache_bitmap[cache_index] = block_num;
     }
     char *cache_addr = objfs->cache + (cache_index << 12);
     strncpy(cache_addr, user_buf, BLOCK_SIZE);
@@ -150,12 +163,13 @@ static void flush_cache(int cache_index, struct objfs_state *objfs)
 
 // Employing LRU policy
 // Ensure returned index > 1
-unsigned int get_free_cache_page(struct objfs_state *objfs)
+unsigned int get_LRU_free_cache_page(struct objfs_state *objfs)
 {
     unsigned int new_cache_index = sobject->last_cache_index + 1;
     new_cache_index %= CACHE_PAGES;
     if (new_cache_index < 2)
         new_cache_index = 2;
+    sobject->last_cache_index = new_cache_index;
     if (sobject->cache_bitmap[new_cache_index] != 0)
         flush_cache(new_cache_index, objfs);
     return new_cache_index;
@@ -309,9 +323,8 @@ void read_indirect_block(int block_num, char *buf, int offset, int size, struct 
     int new_offset;
     int *block;
     malloc_4k(block);
-    if (read_block(objfs, block_num, (char *)block) < 0) {
-        free_4k(block);
-        return;
+    if (read_cached(objfs, block_num, (char *)block) == -1) {
+        read_block(objfs, block_num, (char *)block);
     }
     int i;
     for (i=0;i<BLOCK_SIZE/4;++i) {
@@ -355,7 +368,7 @@ long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs, of
             break;
         read_indirect_block(obj->data_block_pointers[i], aux_buf, my_offset, aux_size, objfs);
     }
-    dprintf("Val after read i: %d\n", i);
+    /* dprintf("Val after read i: %d\n", i); */
     dprintf("Read: %s\n", aux_buf);
     for (i=offset;i<size;++i)
         buf[i-offset] = aux_buf[i];
@@ -398,9 +411,8 @@ int write_indirect_block(int block_num, char *buf, int offset, int size, struct 
     int new_offset;
     int *block;
     malloc_4k(block);
-    if (read_block(objfs, block_num, (char *)block) < 0) {
-        free_4k(block);
-        return block_num;
+    if (read_cached(objfs, block_num, (char *)block) == -1) {
+        read_block(objfs, block_num, (char *)block);
     }
     int i;
     /* dprintf("just before for loop\n"); */
@@ -421,7 +433,9 @@ int write_indirect_block(int block_num, char *buf, int offset, int size, struct 
     while (i < BLOCK_SIZE/4) {
         block[i++] = -1;
     }
-    write_block(objfs, block_num, (char *)block);
+    if (write_cached(objfs, block_num, (char *)block) == -1) {
+        write_block(objfs, block_num, (char *)block);
+    }
     free_4k(block);
     return block_num;
 }
@@ -527,7 +541,13 @@ int objstore_init(struct objfs_state *objfs)
         i += 4096;
         j++;
     }
-    sobject->last_cache_index = -1; // Used in LRU caching
+
+    sobject->last_cache_index = 1; // Used in LRU caching
+    for (i=0;i<CACHE_PAGES;++i) {
+        sobject->cache_bitmap[i] = 0;
+        sobject->dirty_flag[i] = 0;
+    }
+
     objfs->objstore_data = sobject;
     struct stat sbuf;
     if(fstat(objfs->blkdev, &sbuf) < 0){
