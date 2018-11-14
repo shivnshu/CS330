@@ -22,10 +22,14 @@ struct super_object {
     // If > 1, it indicates the page distance from objfs->cache
     // Always wasting 2 cache memory pages
     ushort block_bitmap[BITMAP_SIZE];
-    char dirty_flag[BITMAP_SIZE];
-    char cache_bitmap[CACHE_PAGES];
+    // 1 => dirty else not
+    char dirty_flag[CACHE_PAGES];
+    // If 0 => unused, otherwise used
+    // All other positive value will indicate which block # it is caching
+    int cache_bitmap[CACHE_PAGES];
     struct object obj[1000000];
-    char dummy[512];
+    int last_cache_index;
+    char dummy[508];
 };
 
 #define DATA_BLOCKS_START sizeof(struct super_object)/BLOCK_SIZE
@@ -70,44 +74,92 @@ unsigned int hash(const char *str)
     return hash % 1000000;
 }
 
+unsigned int get_free_cache_page(struct objfs_state *);
+
 #ifdef CACHE         // CACHED implementation
-static int find_read_cached(struct objfs_state *objfs, struct object *obj, char *user_buf, int size)
+static int read_cached(struct objfs_state *objfs, int block_num, char *user_buf)
 {
+    if (sobject->block_bitmap[block_num] <= 1)
+        return -1;
+    int cache_index = sobject->block_bitmap[block_num];
+    char *cache_addr = objfs->cache + (cache_index << 12);
+    strncpy(user_buf, cache_addr, BLOCK_SIZE);
     return 0;
 }
 /*Find the object in the cache and update it*/
-static int find_write_cached(struct objfs_state *objfs, struct object *obj, const char *user_buf, int size)
+static int write_cached(struct objfs_state *objfs, int block_num, char *user_buf)
 {
+    int cache_index;
+    if (sobject->block_bitmap[block_num] > 1) {
+        cache_index = sobject->block_bitmap[block_num];
+    } else {
+        cache_index = get_free_cache_page(objfs);
+        // Since cache_index > 1
+        sobject->block_bitmap[block_num] = cache_index;
+    }
+    char *cache_addr = objfs->cache + (cache_index << 12);
+    strncpy(cache_addr, user_buf, BLOCK_SIZE);
+    sobject->dirty_flag[cache_index] = 1;
     return 0;
 }
 static int cache_sync(struct objfs_state *objfs)
 {
     int i;
-    int cache_offset;
-    for (i=DATA_BLOCKS_START;i<total_num_disk_blocks;++i) {
-        if (sobject->block_bitmap[i] <= 1 || sobject->dirty_flag[i] == 0)
+    int block_num;
+    for (i=0;i<CACHE_PAGES;++i) {
+        if (sobject->cache_bitmap[i] == 0 || sobject->dirty_flag[i] == 0)
             continue;
-        cache_offset = sobject->block_bitmap[i];
-        sobject->block_bitmap[i] = 1;
+        block_num = sobject->cache_bitmap[i];
+        write_block(objfs, block_num, objfs->cache + (i << 12));
+        sobject->cache_bitmap[i] = 0;
         sobject->dirty_flag[i] = 0;
-        write_block(objfs, i, objfs->cache + (cache_offset << 12));
+        sobject->block_bitmap[block_num] = 1;
     }
     return 0;
 }
-#else  //uncached implementation
-static int find_read_cached(struct objfs_state *objfs, struct object *obj, char *user_buf, int size)
+static void flush_cache(int cache_index, struct objfs_state *objfs)
 {
-    return 0;
+    if (sobject->cache_bitmap[cache_index] == 0)
+        return;
+    int block_num;
+    block_num = sobject->cache_bitmap[cache_index];
+    if (sobject->dirty_flag[cache_index] != 0) {
+        write_block(objfs, block_num, objfs->cache + (cache_index << 12));
+    }
+    sobject->cache_bitmap[cache_index] = 0;
+    sobject->block_bitmap[block_num] = 1;
 }
-static int find_write_cached(struct objfs_state *objfs, struct object *obj, const char *user_buf, int size)
+#else  //uncached implementation
+static int read_cached(int block_num, char *user_buf)
 {
-    return 0;
+    return -1;
+}
+static int write_cached(struct objfs_state *objfs, int block_num, char *user_buf)
+{
+    return -1;
 }
 static int cache_sync(struct objfs_state *objfs)
 {
     return 0;
 }
+static void flush_cache(int cache_index, struct objfs_state *objfs)
+{
+    return;
+}
 #endif
+
+// Employing LRU policy
+// Ensure returned index > 1
+unsigned int get_free_cache_page(struct objfs_state *objfs)
+{
+    unsigned int new_cache_index = sobject->last_cache_index + 1;
+    new_cache_index %= CACHE_PAGES;
+    if (new_cache_index < 2)
+        new_cache_index = 2;
+    if (sobject->cache_bitmap[new_cache_index] != 0)
+        flush_cache(new_cache_index, objfs);
+    return new_cache_index;
+}
 
 /*
 Returns the object ID.  -1 (invalid), 0, 1 - reserved
@@ -241,6 +293,7 @@ long rename_object(const char *key, const char *newname, struct objfs_state *obj
     return new_id;
 }
 
+
 /*
   Reads the content of the object onto the buffer with objid = objid.
   Return value: Success --> #of bytes written
@@ -267,6 +320,8 @@ void read_indirect_block(int block_num, char *buf, int offset, int size, struct 
             break;
         if (block[i] == -1)
             break;
+        if (read_cached(objfs, block[i], buf+offset+new_offset) != -1)
+            continue;
         if (read_block(objfs, block[i], buf+offset+new_offset) < 0)
             break;
     }
@@ -357,6 +412,8 @@ int write_indirect_block(int block_num, char *buf, int offset, int size, struct 
             block[i] = get_new_datablock();
             set_block_bitmap(block[i]);
         }
+        if (write_cached(objfs, block[i], buf+offset+new_offset) != -1)
+            continue;
         if (write_block(objfs, block[i], buf+offset+new_offset) < 0)
             break;
     }
@@ -470,7 +527,7 @@ int objstore_init(struct objfs_state *objfs)
         i += 4096;
         j++;
     }
-
+    sobject->last_cache_index = -1; // Used in LRU caching
     objfs->objstore_data = sobject;
     struct stat sbuf;
     if(fstat(objfs->blkdev, &sbuf) < 0){
@@ -481,7 +538,8 @@ int objstore_init(struct objfs_state *objfs)
     // Global variable
     total_num_disk_blocks = objfs->disksize;
 
-    dprintf("Super Block size: %lu MB\n", sizeof(struct super_object)/1024/1024);
+    dprintf("%lu\n", sizeof(struct super_object));
+    dprintf("Super Block size: %lu MB, object size: %lu bytes\n", sizeof(struct super_object)/1024/1024, sizeof(struct object));
     dprintf("Done objstore init\n");
     return 0;
 }
@@ -491,12 +549,12 @@ int objstore_init(struct objfs_state *objfs)
 */
 int objstore_destroy(struct objfs_state *objfs)
 {
+    // Sync the data block before unmounting
+    cache_sync(objfs);
     objfs->objstore_data = NULL;
     for (int i=0;i<sizeof(struct super_object);i+=BLOCK_SIZE) {
         write_block(objfs, i/BLOCK_SIZE, (char *)(sobject)+i);
     }
-    // Sync the data block before unmounting
-    cache_sync(objfs);
     free_superobject(sobject);
     dprintf("Done objstore destroy\n");
     return 0;
