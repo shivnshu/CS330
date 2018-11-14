@@ -22,6 +22,13 @@ struct super_object {
     char dummy[2559];
 };
 
+#define malloc_4k(x) do{                                                \
+        (x) = mmap(NULL, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0); \
+        if((x) == MAP_FAILED)                                           \
+            (x)=NULL;                                                   \
+    }while(0);
+#define free_4k(x) munmap((x), BLOCK_SIZE)
+
 #define malloc_superobject(x) do{                                                \
         (x) = mmap(NULL, sizeof(struct super_object), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0); \
         if((x) == MAP_FAILED)                                           \
@@ -162,20 +169,74 @@ long destroy_object(const char *key, struct objfs_state *objfs)
 
 long rename_object(const char *key, const char *newname, struct objfs_state *objfs)
 {
+    if(strlen(newname) > 32)
+        return -1;
     long new_id = create_object(newname, objfs);
+    if (new_id == -1)
+        return -1;
+    struct object *new_obj = &sobject->obj[idToIndex(new_id)];
     long old_id = find_object_id(key, objfs);
+    if (old_id == -1)
+        return -1;
+    struct object *old_obj = &sobject->obj[idToIndex(old_id)];
 
-    return -1;
+    new_obj->size = old_obj->size;
+    new_obj->dirty = old_obj->dirty;
+    for (int i=0;i<4;++i) {
+        new_obj->cache_pointers[i] = old_obj->cache_pointers[i];
+        new_obj->data_block_pointers[i] = old_obj->data_block_pointers[i];
+    }
+    memset(old_obj, 0, sizeof(struct object));
+    return new_id;
 }
 
+int get_new_block()
+{
+    for (int i=2;i<1000000;++i) {
+        if (bitmap_ispresent(i) == 0)
+            return i;
+    }
+    return -1;
+}
 /*
   Writes the content of the buffer into the object with objid = objid.
   Return value: Success --> #of bytes written
                 Failure --> -1
 */
+void write_indirect_block(int indirect_block, char *buf, int size, struct objfs_state *objfs)
+{
+    if (size <= 0)
+        return;
+    int offset;
+    int *block;
+    malloc_4k(block);
+    if (read_block(objfs, indirect_block, block) < 1) {
+        free_4k(block);
+        return -1;
+    }
+    for (int i=0;i<1024;++i) {
+        offset = i*4*1024;
+        if (size < offset)
+            break;
+        if (block[i] == -1) {
+            block[i] = get_new_block();
+            bitmap_flipbit(block[i]);
+        }
+        write_block(objfs, block[i], buf + offset);
+    }
+    write_block(objfs, indirect_block, block);
+    free_4k(block);
+}
 long objstore_write(int objid, const char *buf, int size, struct objfs_state *objfs)
 {
-   return -1;
+    struct object *obj = &sobject->obj[idToIndex(objid)];
+    int offset;
+    if (size > 16*1024*1024)
+        return -1;
+    for (int i=0;i<4;++i) {
+        offset = i * 4 * 1024 * 1024;
+        write_indirect_block(obj->data_block_pointers[i], buf+offset, size - offset, objfs);
+    }
 }
 
 /*
@@ -185,7 +246,14 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
 */
 long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs)
 {
-   return -1;
+    struct object *obj = &sobject->obj[idToIndex(objid)];
+    int offset;
+    if (size > 16*1024*1024)
+        return -1;
+    for (int i=0;i<4;++i) {
+        offset = i * 4 * 1024 * 1024;
+        write_indirect_block(obj->data_block_pointers[i], buf+offset, size - offset, objfs);
+    }
 }
 
 /*
@@ -213,7 +281,7 @@ int objstore_init(struct objfs_state *objfs)
     int i = 0;
     int j = 0;
     while (i < sizeof(struct super_object)) {
-        if (read_block(objfs, j * BLOCK_SIZE, (char *)sobject + i))
+        if (read_block(objfs, j, (char *)sobject + i))
             return -1;
         i += 4096;
         j++;

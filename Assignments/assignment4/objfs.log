@@ -30,3 +30,17 @@ objfs_getattr: key=/
 objfs_getattr: key=/.git
 objfs_getattr: key=/.git
 objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_destroy
+Done objstore destroy
