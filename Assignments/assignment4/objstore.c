@@ -56,7 +56,6 @@ struct super_object {
 
 // Global variable
 struct super_object *sobject;
-struct objfs_state *global_objfs;
 
 // Courtesy: http://www.cse.yorku.ca/~oz/hash.html
 unsigned int hash(const char *str)
@@ -259,7 +258,7 @@ void write_indirect_block(int block_num, char *buf, int offset, int size, struct
     free_4k(block);
 }
 
-long objstore_write(int objid, const char *buf, int size, struct objfs_state *objfs)
+long objstore_write(int objid, const char *buf, int size, struct objfs_state *objfs, off_t offset)
 {
     if (objid < 2)
         return -1;
@@ -276,15 +275,15 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
         aux_size = size/BLOCK_SIZE;
     }
     malloc_nk(aux_buf, aux_size);
-    int i, offset;
+    int i, my_offset;
     for (i=0;i<size;++i)
         aux_buf[i] = buf[i];
 
     for (i=0;i<4;++i) {
-        offset = i*4*1024*1024;
-        if (offset > size)
+        my_offset = i*4*1024*1024;
+        if (my_offset > size)
             break;
-        write_indirect_block(obj->data_block_pointers[i], aux_buf, offset, aux_size, objfs);
+        write_indirect_block(obj->data_block_pointers[i], aux_buf, my_offset, aux_size, objfs);
     }
     while (i < 4) {
         obj->data_block_pointers[i++] = -1;
@@ -325,13 +324,13 @@ void read_indirect_block(int block_num, char *buf, int offset, int size, struct 
     free_4k(block);
 }
 
-long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs)
+long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs, off_t offset)
 {
     if (objid < 2)
         return -1;
     struct object *obj = &sobject->obj[idToIndex(objid)];
     size = (size < obj->size)?size:obj->size;
-    int offset;
+    int my_offset;
     char *aux_buf;
     int aux_size;
     if (size % BLOCK_SIZE) {
@@ -341,10 +340,10 @@ long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs)
     }
     malloc_nk(aux_buf, aux_size);
     for (int i=0;i<4;++i) {
-        offset = i*4*1024*1024;
-        if (offset > aux_size)
+        my_offset = i*4*1024*1024;
+        if (my_offset > aux_size)
             break;
-        read_indirect_block(obj->data_block_pointers[i], aux_buf, offset, aux_size, objfs);
+        read_indirect_block(obj->data_block_pointers[i], aux_buf, my_offset, aux_size, objfs);
     }
     int i;
     for (i=0;i<size;++i)
@@ -357,12 +356,12 @@ long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs)
   Fillup buf->st_size and buf->st_blocks correctly
   See man 2 stat
 */
-int cal_number_blocks(int block_num)
+int cal_number_blocks(int block_num, struct objfs_state *objfs)
 {
     int res = 0;
     int *block;
     malloc_4k(block);
-    read_block(global_objfs, block_num, (char *)block);
+    read_block(objfs, block_num, (char *)block);
     for (int i=0;i<BLOCK_SIZE/4;++i) {
         if (block[i] < 0)
             break;
@@ -372,7 +371,7 @@ int cal_number_blocks(int block_num)
     return res;
 }
 
-int fillup_size_details(struct stat *buf)
+int fillup_size_details(struct stat *buf, struct objfs_state *objfs)
 {
     int id = buf->st_ino;
     if (id < 0)
@@ -386,7 +385,7 @@ int fillup_size_details(struct stat *buf)
     for (int i=0;i<4;++i) {
         if (obj->data_block_pointers[i] < 0)
             break;
-        num_blocks += cal_number_blocks(obj->data_block_pointers[i]);
+        num_blocks += cal_number_blocks(obj->data_block_pointers[i], objfs);
     }
     buf->st_blocks = num_blocks;
     return 0;
@@ -397,7 +396,6 @@ int fillup_size_details(struct stat *buf)
 */
 int objstore_init(struct objfs_state *objfs)
 {
-    global_objfs = objfs;
     // sobject is global variable
     malloc_superobject(sobject);
     if(!sobject){

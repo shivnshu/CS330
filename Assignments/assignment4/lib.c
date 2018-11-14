@@ -2,6 +2,7 @@
 
 extern int do_init(struct objfs_state *objfs)
 {
+   struct stat sb;
    char *ptr;
    char buf[1024];
    ptr = getcwd(buf, 1024);
@@ -19,6 +20,13 @@ extern int do_init(struct objfs_state *objfs)
        perror("blkdev open");
        return -1;
    }
+
+   if(fstat(objfs->blkdev, &sb) < 0){
+       perror("blkdev open"); 
+       return -1;
+   }
+   objfs->disksize = (sb.st_size) >> 12;   // #of blocks
+   printf("diskblocks = %ld\n", objfs->disksize);
 
    objfs->logfd = fopen("objfs.log", "w+");
 
