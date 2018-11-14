@@ -4,7 +4,6 @@
 // sizeof(object) = 64 bytes
 // #(object per block) = 4096 / 64 = 64
 // Max. no. of objects = 10^6
-// Starting reserved disk blocks for super object = 21769
 struct object {
     int id;
     int size;
@@ -70,6 +69,45 @@ unsigned int hash(const char *str)
 
     return hash % 1000000;
 }
+
+#ifdef CACHE         // CACHED implementation
+static int find_read_cached(struct objfs_state *objfs, struct object *obj, char *user_buf, int size)
+{
+    return 0;
+}
+/*Find the object in the cache and update it*/
+static int find_write_cached(struct objfs_state *objfs, struct object *obj, const char *user_buf, int size)
+{
+    return 0;
+}
+static int cache_sync(struct objfs_state *objfs)
+{
+    int i;
+    int cache_offset;
+    for (i=DATA_BLOCKS_START;i<total_num_disk_blocks;++i) {
+        if (sobject->block_bitmap[i] <= 1 || sobject->dirty_flag[i] == 0)
+            continue;
+        cache_offset = sobject->block_bitmap[i];
+        sobject->block_bitmap[i] = 1;
+        sobject->dirty_flag[i] = 0;
+        write_block(objfs, i, objfs->cache + (cache_offset << 12));
+    }
+    return 0;
+}
+#else  //uncached implementation
+static int find_read_cached(struct objfs_state *objfs, struct object *obj, char *user_buf, int size)
+{
+    return 0;
+}
+static int find_write_cached(struct objfs_state *objfs, struct object *obj, const char *user_buf, int size)
+{
+    return 0;
+}
+static int cache_sync(struct objfs_state *objfs)
+{
+    return 0;
+}
+#endif
 
 /*
 Returns the object ID.  -1 (invalid), 0, 1 - reserved
@@ -457,6 +495,8 @@ int objstore_destroy(struct objfs_state *objfs)
     for (int i=0;i<sizeof(struct super_object);i+=BLOCK_SIZE) {
         write_block(objfs, i/BLOCK_SIZE, (char *)(sobject)+i);
     }
+    // Sync the data block before unmounting
+    cache_sync(objfs);
     free_superobject(sobject);
     dprintf("Done objstore destroy\n");
     return 0;
