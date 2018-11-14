@@ -1,25 +1,33 @@
 #include "lib.h"
 
 // 4 ints are indirect pointers(4*4096KB)
-// Similar with cache_pointers
-// sizeof(object) = 4 + 4 + 4*4 + 4 + 32 + 4*4 = 76 bytes
-// #(object per block) = 4096 / 88
+// sizeof(object) = 64 bytes
+// #(object per block) = 4096 / 64 = 64
 // Max. no. of objects = 10^6
-// Reserve starting 32768 blocks (256 for bitmap)
-
+// Starting reserved disk blocks for super object = 21769
 struct object {
-    long id;
-    long size;
-    int cache_pointers[4];
-    int dirty;
+    int id;
+    int size;
     char key[32];
     int data_block_pointers[4];
 };
 
+// Make total size a multiple of 4KB
+// Max no. of block for 32 GB
+#define BITMAP_SIZE 32*1024*1024/4
+// Cache size is 128 MB
+#define CACHE_PAGES 128*1024/4
+#define DATA_BLOCKS_START 22000
+
 struct super_object {
-    char bitmap[256 * BLOCK_SIZE];
+    // Store 0 for unused, otherwise used
+    // If > 1, it indicates the page distance from objfs->cache
+    // Always wasting 2 cache memory pages
+    ushort block_bitmap[BITMAP_SIZE];
+    char dirty_flag[BITMAP_SIZE];
+    char cache_bitmap[CACHE_PAGES];
     struct object obj[1000000];
-    char dummy[2559];
+    char dummy[512];
 };
 
 #define malloc_4k(x) do{                                                \
@@ -29,23 +37,31 @@ struct super_object {
     }while(0);
 #define free_4k(x) munmap((x), BLOCK_SIZE)
 
+#define malloc_nk(x, n) do{                                               \
+        (x) = mmap(NULL, (n)*BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0); \
+        if((x) == MAP_FAILED)                                           \
+            (x)=NULL;                                                   \
+    }while(0);
+#define free_nk(x, n) munmap((x), (n)*BLOCK_SIZE)
+
 #define malloc_superobject(x) do{                                                \
         (x) = mmap(NULL, sizeof(struct super_object), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0); \
         if((x) == MAP_FAILED)                                           \
             (x)=NULL;                                                   \
     }while(0);
-
 #define free_superobject(x) munmap((x), sizeof(struct super_object))
 
 #define indexToID(x) ({int retval; retval = x+2; retval;})
 #define idToIndex(x) ({int retval; retval = x-2; retval;})
 
+// Global variable
 struct super_object *sobject;
+struct objfs_state *global_objfs;
 
 // Courtesy: http://www.cse.yorku.ca/~oz/hash.html
-int hash(const char *str)
+unsigned int hash(const char *str)
 {
-    int hash = 5381;
+    unsigned int hash = 5381;
     int c;
 
     while ((c = *str++) != '\0')
@@ -60,34 +76,16 @@ Returns the object ID.  -1 (invalid), 0, 1 - reserved
 long find_object_id(const char *key, struct objfs_state *objfs)
 {
     int index = hash(key);
-    struct super_object *sblock = objfs->objstore_data;
-
-    struct object *obj = &sblock->obj[index];
+    dprintf("Inside find_object_id with index: %d\n", index);
+    struct object *obj = &sobject->obj[index];
     while (obj->id && strcmp(obj->key, key)) {
         index++;
         index %= 1000000;
-        obj = &sblock->obj[index];
+        obj = &sobject->obj[index];
     }
-
     if (obj->id == 0)
         return -1;
     return obj->id;
-}
-
-// TODO: Add locks
-int bitmap_ispresent(int num_block)
-{
-    char bitmap = sobject->bitmap[num_block / 8];
-    int offset = num_block % 8;
-    return (bitmap & (1 << offset));
-}
-
-void bitmap_flipbit(int num_block)
-{
-    char bitmap = sobject->bitmap[num_block / 8];
-    int offset = num_block % 8;
-    bitmap = (bitmap ^ (1 << offset));
-    sobject->bitmap[num_block / 8] = bitmap;
 }
 
 /*
@@ -111,25 +109,31 @@ long create_object(const char *key, struct objfs_state *objfs)
 
     obj->id = indexToID(index);
     obj->size = 0;
-    obj->dirty = 0;
     strncpy(obj->key, key, 32);
     for (index=0;index<4;++index) {
-        obj->cache_pointers[index] = -1;
         obj->data_block_pointers[index] = -1;
     }
     return obj->id;
 }
+
 /*
   One of the users of the object has dropped a reference
   Can be useful to implement caching.
   Return value: Success --> 0
                 Failure --> -1
 */
-
-
 long release_object(int objid, struct objfs_state *objfs)
 {
     return 0;
+}
+
+void set_block_bitmap(int block_num)
+{
+    sobject->block_bitmap[block_num] = 1;
+}
+void clear_block_bitmap(int block_num)
+{
+    sobject->block_bitmap[block_num] = 0;
 }
 
 /*
@@ -140,23 +144,34 @@ long release_object(int objid, struct objfs_state *objfs)
 */
 void free_data_block(int data_block_pointer)
 {
-    int *ptr = (int *)data_block_pointer;
-    for (int i=0;i<BLOCK_SIZE/sizeof(int);++i) {
-        if (ptr[i] == -1)
+    int i, block_num;
+    int *tmp;
+    malloc_4k(tmp);
+    for (i=0;i<BLOCK_SIZE/4;++i) {
+        block_num = tmp[i];
+        if (block_num == -1)
             break;
-        bitmap_flipbit(ptr[i]);
+        clear_block_bitmap(block_num);
+        /* tmp[i] = -1; */
     }
+    free_4k(tmp);
 }
+
 long destroy_object(const char *key, struct objfs_state *objfs)
 {
-    int index = idToIndex(find_object_id(key, objfs));
+    int id = find_object_id(key, objfs);
+    if (id == -1)
+        return -1;
+    int index = idToIndex(id);
     struct object *obj = &sobject->obj[index];
     if (obj->id == 0)
         return -1;
     for (int i=0;i<4;++i) {
+        if (obj->data_block_pointers[i] == -1)
+            break;
         free_data_block(obj->data_block_pointers[i]);
     }
-    memset(obj, 0, sizeof(struct object));
+    obj->id = 0;
     return 0;
 }
 
@@ -166,77 +181,118 @@ long destroy_object(const char *key, struct objfs_state *objfs)
   Return value: Success --> object ID of the newly created object
                 Failure --> -1
 */
-
 long rename_object(const char *key, const char *newname, struct objfs_state *objfs)
 {
     if(strlen(newname) > 32)
         return -1;
-    long new_id = create_object(newname, objfs);
+    int old_id = find_object_id(key, objfs);
+    if (old_id == -1)
+        return -1;
+    int new_id = create_object(newname, objfs);
     if (new_id == -1)
         return -1;
     struct object *new_obj = &sobject->obj[idToIndex(new_id)];
-    long old_id = find_object_id(key, objfs);
-    if (old_id == -1)
-        return -1;
     struct object *old_obj = &sobject->obj[idToIndex(old_id)];
 
     new_obj->size = old_obj->size;
-    new_obj->dirty = old_obj->dirty;
     for (int i=0;i<4;++i) {
-        new_obj->cache_pointers[i] = old_obj->cache_pointers[i];
         new_obj->data_block_pointers[i] = old_obj->data_block_pointers[i];
     }
-    memset(old_obj, 0, sizeof(struct object));
+    old_obj->id = 0;
     return new_id;
 }
 
-int get_new_block()
+int get_new_datablock()
 {
     for (int i=2;i<1000000;++i) {
-        if (bitmap_ispresent(i) == 0)
+        if (sobject->block_bitmap[i] == 0)
             return i;
     }
     return -1;
+}
+
+void initialize_block(int block_num, struct objfs_state *objfs)
+{
+    int *block;
+    malloc_4k(block);
+    read_block(objfs, block_num, (char *)block);
+    for (int i=0;i<BLOCK_SIZE/4;++i)
+        block[i] = -1;
+    write_block(objfs, block_num, (char *)block);
+    free_4k(block);
 }
 /*
   Writes the content of the buffer into the object with objid = objid.
   Return value: Success --> #of bytes written
                 Failure --> -1
 */
-void write_indirect_block(int indirect_block, char *buf, int size, struct objfs_state *objfs)
+void write_indirect_block(int block_num, char *buf, int offset, int size, struct objfs_state *objfs)
 {
-    if (size <= 0)
-        return;
-    int offset;
+    if (block_num < 0) {
+        block_num = get_new_datablock();
+        set_block_bitmap(block_num);
+        initialize_block(block_num, objfs);
+    }
+    int new_offset;
     int *block;
     malloc_4k(block);
-    if (read_block(objfs, indirect_block, block) < 1) {
+    if (read_block(objfs, block_num, (char *)block) < 1) {
         free_4k(block);
-        return -1;
+        return;
     }
-    for (int i=0;i<1024;++i) {
-        offset = i*4*1024;
-        if (size < offset)
+    int i;
+    for (i=0;i<BLOCK_SIZE/4;++i) {
+        new_offset = i*4*1024;
+        if (size < offset+new_offset)
             break;
         if (block[i] == -1) {
-            block[i] = get_new_block();
-            bitmap_flipbit(block[i]);
+            block[i] = get_new_datablock();
+            set_block_bitmap(block[i]);
         }
-        write_block(objfs, block[i], buf + offset);
+        if (write_block(objfs, block[i], buf+offset+new_offset) < 0)
+            return;
     }
-    write_block(objfs, indirect_block, block);
+    while (i < BLOCK_SIZE/4) {
+        block[i++] = -1;
+    }
+    write_block(objfs, block_num, (char *)block);
     free_4k(block);
 }
+
 long objstore_write(int objid, const char *buf, int size, struct objfs_state *objfs)
 {
-    struct object *obj = &sobject->obj[idToIndex(objid)];
-    int offset;
-    if (size > 16*1024*1024)
+    if (objid < 2)
         return -1;
-    for (int i=0;i<4;++i) {
-        offset = i * 4 * 1024 * 1024;
-        write_indirect_block(obj->data_block_pointers[i], buf+offset, size - offset, objfs);
+    struct object *obj = &sobject->obj[idToIndex(objid)];
+    if (obj->id == 0)
+        return -1;
+    if (size > 16*1024*1024)
+        size = 16*1024*1024;
+    char *aux_buf;
+    int aux_size;
+    if (size % BLOCK_SIZE) {
+        aux_size = size/BLOCK_SIZE + 1;
+    } else {
+        aux_size = size/BLOCK_SIZE;
     }
+    malloc_nk(aux_buf, aux_size);
+    int i, offset;
+    for (i=0;i<size;++i)
+        aux_buf[i] = buf[i];
+
+    for (i=0;i<4;++i) {
+        offset = i*4*1024*1024;
+        if (offset > size)
+            break;
+        write_indirect_block(obj->data_block_pointers[i], aux_buf, offset, aux_size, objfs);
+    }
+    while (i < 4) {
+        obj->data_block_pointers[i++] = -1;
+    }
+
+    free_nk(aux_buf, aux_size);
+    obj->size = size;
+    return size;
 }
 
 /*
@@ -244,16 +300,56 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
   Return value: Success --> #of bytes written
                 Failure --> -1
 */
+void read_indirect_block(int block_num, char *buf, int offset, int size, struct objfs_state *objfs)
+{
+    if (block_num < 0) {
+        // Should not happen
+        return;
+    }
+    int new_offset;
+    int *block;
+    malloc_4k(block);
+    if (read_block(objfs, block_num, (char *)block) < 1) {
+        free_4k(block);
+        return;
+    }
+    for (int i=0;i<BLOCK_SIZE/4;++i) {
+        new_offset = i*4*1024;
+        if (size < offset+new_offset)
+            break;
+        if (block[i] == -1)
+            break;
+        if (read_block(objfs, block[i], buf+offset+new_offset) < 0)
+            break;
+    }
+    free_4k(block);
+}
+
 long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs)
 {
-    struct object *obj = &sobject->obj[idToIndex(objid)];
-    int offset;
-    if (size > 16*1024*1024)
+    if (objid < 2)
         return -1;
-    for (int i=0;i<4;++i) {
-        offset = i * 4 * 1024 * 1024;
-        write_indirect_block(obj->data_block_pointers[i], buf+offset, size - offset, objfs);
+    struct object *obj = &sobject->obj[idToIndex(objid)];
+    size = (size < obj->size)?size:obj->size;
+    int offset;
+    char *aux_buf;
+    int aux_size;
+    if (size % BLOCK_SIZE) {
+        aux_size = size/BLOCK_SIZE + 1;
+    } else {
+        aux_size = size/BLOCK_SIZE;
     }
+    malloc_nk(aux_buf, aux_size);
+    for (int i=0;i<4;++i) {
+        offset = i*4*1024*1024;
+        if (offset > aux_size)
+            break;
+        read_indirect_block(obj->data_block_pointers[i], aux_buf, offset, aux_size, objfs);
+    }
+    int i;
+    for (i=0;i<size;++i)
+        buf[i] = aux_buf[i];
+    return size;
 }
 
 /*
@@ -261,23 +357,54 @@ long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs)
   Fillup buf->st_size and buf->st_blocks correctly
   See man 2 stat
 */
+int cal_number_blocks(int block_num)
+{
+    int res = 0;
+    int *block;
+    malloc_4k(block);
+    read_block(global_objfs, block_num, (char *)block);
+    for (int i=0;i<BLOCK_SIZE/4;++i) {
+        if (block[i] < 0)
+            break;
+        res++;
+    }
+    free_4k(block);
+    return res;
+}
+
 int fillup_size_details(struct stat *buf)
 {
-   return -1;
+    int id = buf->st_ino;
+    if (id < 0)
+        return -1;
+    int index = idToIndex(id);
+    struct object *obj = &sobject->obj[index];
+    if (obj->id == -1)
+        return -1;
+    buf->st_size = obj->size;
+    int num_blocks = 0;
+    for (int i=0;i<4;++i) {
+        if (obj->data_block_pointers[i] < 0)
+            break;
+        num_blocks += cal_number_blocks(obj->data_block_pointers[i]);
+    }
+    buf->st_blocks = num_blocks;
+    return 0;
 }
 
 /*
    Set your private pointeri, anyway you like.
 */
-// Block# 0 to 255 store block bitmap
 int objstore_init(struct objfs_state *objfs)
 {
+    global_objfs = objfs;
     // sobject is global variable
     malloc_superobject(sobject);
     if(!sobject){
         dprintf("%s: malloc\n", __func__);
         return -1;
     }
+
     int i = 0;
     int j = 0;
     while (i < sizeof(struct super_object)) {
@@ -287,8 +414,21 @@ int objstore_init(struct objfs_state *objfs)
         j++;
     }
 
-    dprintf("%lu\n", sizeof(struct super_object));
     objfs->objstore_data = sobject;
+    struct stat sbuf;
+    if(fstat(objfs->blkdev, &sbuf) < 0){
+        perror("fstat");
+        exit(-1);
+    }
+
+    int num_blocks = sbuf.st_size / 4096;
+    while (num_blocks < BITMAP_SIZE) {
+        // Mark non-present blocks as unusable
+        sobject->block_bitmap[num_blocks++] = 1;
+    }
+
+    /* dprintf("%d %d\n", sbuf.st_size, sbuf.st_size/4096); */
+    dprintf("%lu %lu\n", sizeof(struct super_object), sizeof(struct object));
     dprintf("Done objstore init\n");
     return 0;
 }
@@ -299,6 +439,9 @@ int objstore_init(struct objfs_state *objfs)
 int objstore_destroy(struct objfs_state *objfs)
 {
     objfs->objstore_data = NULL;
+    for (int i=0;i<sizeof(struct super_object);i+=BLOCK_SIZE) {
+        write_block(objfs, i/BLOCK_SIZE, (char *)(sobject)+i);
+    }
     free_superobject(sobject);
     dprintf("Done objstore destroy\n");
     return 0;
