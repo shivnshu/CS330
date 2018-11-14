@@ -17,7 +17,6 @@ struct object {
 #define BITMAP_SIZE 32*1024*1024/4
 // Cache size is 128 MB
 #define CACHE_PAGES 128*1024/4
-#define DATA_BLOCKS_START 22000
 
 struct super_object {
     // Store 0 for unused, otherwise used
@@ -29,6 +28,8 @@ struct super_object {
     struct object obj[1000000];
     char dummy[512];
 };
+
+#define DATA_BLOCKS_START sizeof(struct super_object)/BLOCK_SIZE
 
 #define malloc_4k(x) do{                                                \
         (x) = mmap(NULL, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0); \
@@ -56,6 +57,7 @@ struct super_object {
 
 // Global variable
 struct super_object *sobject;
+int total_num_disk_blocks;
 
 // Courtesy: http://www.cse.yorku.ca/~oz/hash.html
 unsigned int hash(const char *str)
@@ -201,9 +203,75 @@ long rename_object(const char *key, const char *newname, struct objfs_state *obj
     return new_id;
 }
 
+/*
+  Reads the content of the object onto the buffer with objid = objid.
+  Return value: Success --> #of bytes written
+                Failure --> -1
+*/
+void read_indirect_block(int block_num, char *buf, int offset, int size, struct objfs_state *objfs)
+{
+    if (block_num < 0) {
+        // Should not happen
+        dprintf("Alert: Read indirect block\n");
+        return;
+    }
+    int new_offset;
+    int *block;
+    malloc_4k(block);
+    if (read_block(objfs, block_num, (char *)block) < 0) {
+        free_4k(block);
+        return;
+    }
+    int i;
+    for (i=0;i<BLOCK_SIZE/4;++i) {
+        new_offset = i*4*1024;
+        if (size < offset+new_offset)
+            break;
+        if (block[i] == -1)
+            break;
+        if (read_block(objfs, block[i], buf+offset+new_offset) < 0)
+            break;
+    }
+    free_4k(block);
+}
+
+long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs, off_t offset)
+{
+    if (objid < 2)
+        return -1;
+    size = size + offset;
+    struct object *obj = &sobject->obj[idToIndex(objid)];
+    if (obj->id == 0) {
+        dprintf("Read: objid not found.\n");
+        return -1;
+    }
+    size = (size < obj->size)?size:obj->size;
+    int my_offset;
+    char *aux_buf;
+    int aux_size;
+    if (size % BLOCK_SIZE) {
+        aux_size = size/BLOCK_SIZE + 1;
+    } else {
+        aux_size = size/BLOCK_SIZE;
+    }
+    malloc_nk(aux_buf, aux_size);
+    int i;
+    for (i=0;i<4;++i) {
+        my_offset = i*4*1024*1024;
+        if (my_offset > aux_size)
+            break;
+        read_indirect_block(obj->data_block_pointers[i], aux_buf, my_offset, aux_size, objfs);
+    }
+    dprintf("Val after read i: %d\n", i);
+    dprintf("Read: %s\n", aux_buf);
+    for (i=offset;i<size;++i)
+        buf[i-offset] = aux_buf[i];
+    return size-offset;
+}
+
 int get_new_datablock()
 {
-    for (int i=2;i<1000000;++i) {
+    for (int i=DATA_BLOCKS_START;i<total_num_disk_blocks;++i) {
         if (sobject->block_bitmap[i] == 0)
             return i;
     }
@@ -225,21 +293,24 @@ void initialize_block(int block_num, struct objfs_state *objfs)
   Return value: Success --> #of bytes written
                 Failure --> -1
 */
-void write_indirect_block(int block_num, char *buf, int offset, int size, struct objfs_state *objfs)
+int write_indirect_block(int block_num, char *buf, int offset, int size, struct objfs_state *objfs)
 {
+    /* dprintf("Inside write_indirect with block num: %d\n", block_num); */
     if (block_num < 0) {
         block_num = get_new_datablock();
         set_block_bitmap(block_num);
         initialize_block(block_num, objfs);
     }
+    /* dprintf("Inside write_indirect with new block num: %d\n", block_num); */
     int new_offset;
     int *block;
     malloc_4k(block);
-    if (read_block(objfs, block_num, (char *)block) < 1) {
+    if (read_block(objfs, block_num, (char *)block) < 0) {
         free_4k(block);
-        return;
+        return block_num;
     }
     int i;
+    /* dprintf("just before for loop\n"); */
     for (i=0;i<BLOCK_SIZE/4;++i) {
         new_offset = i*4*1024;
         if (size < offset+new_offset)
@@ -249,13 +320,15 @@ void write_indirect_block(int block_num, char *buf, int offset, int size, struct
             set_block_bitmap(block[i]);
         }
         if (write_block(objfs, block[i], buf+offset+new_offset) < 0)
-            return;
+            break;
     }
+    /* dprintf("Val i after write loop: %d\n", i); */
     while (i < BLOCK_SIZE/4) {
         block[i++] = -1;
     }
     write_block(objfs, block_num, (char *)block);
     free_4k(block);
+    return block_num;
 }
 
 long objstore_write(int objid, const char *buf, int size, struct objfs_state *objfs, off_t offset)
@@ -265,6 +338,7 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
     struct object *obj = &sobject->obj[idToIndex(objid)];
     if (obj->id == 0)
         return -1;
+    size = size + offset;
     if (size > 16*1024*1024)
         size = 16*1024*1024;
     char *aux_buf;
@@ -276,14 +350,17 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
     }
     malloc_nk(aux_buf, aux_size);
     int i, my_offset;
-    for (i=0;i<size;++i)
+    // Small hack to escape from rewriting this function after signature update
+    objstore_read(objid, aux_buf, offset, objfs, 0);
+    for (i=offset;i<size;++i)
         aux_buf[i] = buf[i];
 
+    dprintf("Write: %s\n", aux_buf);
     for (i=0;i<4;++i) {
         my_offset = i*4*1024*1024;
         if (my_offset > size)
             break;
-        write_indirect_block(obj->data_block_pointers[i], aux_buf, my_offset, aux_size, objfs);
+        obj->data_block_pointers[i] = write_indirect_block(obj->data_block_pointers[i], aux_buf, my_offset, aux_size, objfs);
     }
     while (i < 4) {
         obj->data_block_pointers[i++] = -1;
@@ -294,62 +371,6 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
     return size;
 }
 
-/*
-  Reads the content of the object onto the buffer with objid = objid.
-  Return value: Success --> #of bytes written
-                Failure --> -1
-*/
-void read_indirect_block(int block_num, char *buf, int offset, int size, struct objfs_state *objfs)
-{
-    if (block_num < 0) {
-        // Should not happen
-        return;
-    }
-    int new_offset;
-    int *block;
-    malloc_4k(block);
-    if (read_block(objfs, block_num, (char *)block) < 1) {
-        free_4k(block);
-        return;
-    }
-    for (int i=0;i<BLOCK_SIZE/4;++i) {
-        new_offset = i*4*1024;
-        if (size < offset+new_offset)
-            break;
-        if (block[i] == -1)
-            break;
-        if (read_block(objfs, block[i], buf+offset+new_offset) < 0)
-            break;
-    }
-    free_4k(block);
-}
-
-long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs, off_t offset)
-{
-    if (objid < 2)
-        return -1;
-    struct object *obj = &sobject->obj[idToIndex(objid)];
-    size = (size < obj->size)?size:obj->size;
-    int my_offset;
-    char *aux_buf;
-    int aux_size;
-    if (size % BLOCK_SIZE) {
-        aux_size = size/BLOCK_SIZE + 1;
-    } else {
-        aux_size = size/BLOCK_SIZE;
-    }
-    malloc_nk(aux_buf, aux_size);
-    for (int i=0;i<4;++i) {
-        my_offset = i*4*1024*1024;
-        if (my_offset > aux_size)
-            break;
-        read_indirect_block(obj->data_block_pointers[i], aux_buf, my_offset, aux_size, objfs);
-    }
-    int i;
-    for (i=0;i<size;++i)
-        buf[i] = aux_buf[i];
-    return size;
-}
 
 /*
   Reads the object metadata for obj->id = buf->st_ino
@@ -419,14 +440,10 @@ int objstore_init(struct objfs_state *objfs)
         exit(-1);
     }
 
-    int num_blocks = sbuf.st_size / 4096;
-    while (num_blocks < BITMAP_SIZE) {
-        // Mark non-present blocks as unusable
-        sobject->block_bitmap[num_blocks++] = 1;
-    }
+    // Global variable
+    total_num_disk_blocks = objfs->disksize;
 
-    /* dprintf("%d %d\n", sbuf.st_size, sbuf.st_size/4096); */
-    dprintf("%lu %lu\n", sizeof(struct super_object), sizeof(struct object));
+    dprintf("Super Block size: %lu MB\n", sizeof(struct super_object)/1024/1024);
     dprintf("Done objstore init\n");
     return 0;
 }

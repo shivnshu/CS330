@@ -1,31 +1,427 @@
 objfs_init
-81199104 56
+Super Block size: 77 MB
 Done objstore init
 objfs_getattr: key=/.xdg-volume-info
-Inside find_object_id
-Index: 719924
+Inside find_object_id with index: 719924
 objfs_getattr: key=/
 objfs_getattr: key=/autorun.inf
-Inside find_object_id
-Index: 991934
-objfs_getattr: key=/
-objfs_getattr: key=/autorun.inf
-Inside find_object_id
-Index: 991934
-objfs_getattr: key=/
-objfs_getattr: key=/
-objfs_getattr: key=/
-objfs_getattr: key=/
-objfs_getattr: key=/
+Inside find_object_id with index: 991934
 objfs_getattr: key=/
 objfs_getattr: key=/.Trash
-Inside find_object_id
-Index: 108053
+Inside find_object_id with index: 108053
 objfs_getattr: key=/.Trash-1000
-Inside find_object_id
-Index: 240195
+Inside find_object_id with index: 240195
+objfs_getattr: key=/autorun.inf
+Inside find_object_id with index: 991934
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_create: key=/CS330###1
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_write: key=/CS330###1 fh=103213
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am 1. Registered to CS330.
+objfs_release: key=/CS330###1
+objfs_getattr: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_create: key=/CS330###2
+objfs_getattr: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_write: key=/CS330###2 fh=103214
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am 2. Registered to CS330.
+objfs_release: key=/CS330###2
+objfs_getattr: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_create: key=/CS330###3
+objfs_getattr: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_write: key=/CS330###3 fh=103215
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am 3. Registered to CS330.
+objfs_release: key=/CS330###3
+objfs_getattr: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_create: key=/CS330###4
+objfs_getattr: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_write: key=/CS330###4 fh=103216
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am 4. Registered to CS330.
+objfs_release: key=/CS330###4
+objfs_getattr: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_create: key=/CS330###5
+objfs_getattr: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_write: key=/CS330###5 fh=103217
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am 5. Registered to CS330.
+objfs_release: key=/CS330###5
+objfs_getattr: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_create: key=/CS330###6
+objfs_getattr: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_write: key=/CS330###6 fh=103218
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am 6. Registered to CS330.
+objfs_release: key=/CS330###6
+objfs_getattr: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_create: key=/CS330###7
+objfs_getattr: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_write: key=/CS330###7 fh=103219
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am 7. Registered to CS330.
+objfs_release: key=/CS330###7
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_create: key=/CS330###8
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_write: key=/CS330###8 fh=103220
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am 8. Registered to CS330.
+objfs_release: key=/CS330###8
 objfs_getattr: key=/
 objfs_getattr: key=/
 objfs_getattr: key=/
-objfs_destroy
-Done objstore destroy
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_getattr: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_getattr: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_getattr: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_getattr: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_getattr: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_getattr: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_getattr: key=/
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_open: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_read: key=/CS330###1 fh=103213
+Val after read i: 1
+Read: I am 1. Registered to CS330.
+objfs_release: key=/CS330###1
+objfs_getattr: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_open: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_read: key=/CS330###2 fh=103214
+Val after read i: 1
+Read: I am 2. Registered to CS330.
+objfs_release: key=/CS330###2
+objfs_getattr: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_open: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_read: key=/CS330###3 fh=103215
+Val after read i: 1
+Read: I am 3. Registered to CS330.
+objfs_release: key=/CS330###3
+objfs_getattr: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_open: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_read: key=/CS330###4 fh=103216
+Val after read i: 1
+Read: I am 4. Registered to CS330.
+objfs_release: key=/CS330###4
+objfs_getattr: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_open: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_read: key=/CS330###5 fh=103217
+Val after read i: 1
+Read: I am 5. Registered to CS330.
+objfs_release: key=/CS330###5
+objfs_getattr: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_open: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_read: key=/CS330###6 fh=103218
+Val after read i: 1
+Read: I am 6. Registered to CS330.
+objfs_release: key=/CS330###6
+objfs_getattr: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_open: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_read: key=/CS330###7 fh=103219
+Val after read i: 1
+Read: I am 7. Registered to CS330.
+objfs_release: key=/CS330###7
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_open: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_read: key=/CS330###8 fh=103220
+Val after read i: 1
+Read: I am 8. Registered to CS330.
+objfs_release: key=/CS330###8
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_unlink: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_create: key=/CS330###1
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_write: key=/CS330###1 fh=103213
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am [updated] CS330###1. Registered to CS330.
+objfs_release: key=/CS330###1
+objfs_getattr: key=/
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_open: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_read: key=/CS330###1 fh=103213
+Val after read i: 1
+Read: I am [updated] CS330###1. Registered to CS330.
+objfs_release: key=/CS330###1
+objfs_getattr: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_open: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_read: key=/CS330###2 fh=103214
+Val after read i: 1
+Read: I am 2. Registered to CS330.
+objfs_release: key=/CS330###2
+objfs_getattr: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_open: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_read: key=/CS330###3 fh=103215
+Val after read i: 1
+Read: I am 3. Registered to CS330.
+objfs_release: key=/CS330###3
+objfs_getattr: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_open: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_read: key=/CS330###4 fh=103216
+Val after read i: 1
+Read: I am 4. Registered to CS330.
+objfs_release: key=/CS330###4
+objfs_getattr: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_open: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_read: key=/CS330###5 fh=103217
+Val after read i: 1
+Read: I am 5. Registered to CS330.
+objfs_release: key=/CS330###5
+objfs_getattr: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_open: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_read: key=/CS330###6 fh=103218
+Val after read i: 1
+Read: I am 6. Registered to CS330.
+objfs_release: key=/CS330###6
+objfs_getattr: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_open: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_read: key=/CS330###7 fh=103219
+Val after read i: 1
+Read: I am 7. Registered to CS330.
+objfs_release: key=/CS330###7
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_open: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_read: key=/CS330###8 fh=103220
+Val after read i: 1
+Read: I am 8. Registered to CS330.
+objfs_release: key=/CS330###8
+objfs_getattr: key=/
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_unlink: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_create: key=/CS330###8
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_write: key=/CS330###8 fh=103220
+Alert: Read indirect block
+Val after read i: 1
+Read: (null)
+Write: I am [updated] CS330###8. Registered to CS330.
+objfs_release: key=/CS330###8
+objfs_getattr: key=/
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_open: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_read: key=/CS330###1 fh=103213
+Val after read i: 1
+Read: I am [updated] CS330###1. Registered to CS330.
+objfs_release: key=/CS330###1
+objfs_getattr: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_open: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_read: key=/CS330###2 fh=103214
+Val after read i: 1
+Read: I am 2. Registered to CS330.
+objfs_release: key=/CS330###2
+objfs_getattr: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_open: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_read: key=/CS330###3 fh=103215
+Val after read i: 1
+Read: I am 3. Registered to CS330.
+objfs_release: key=/CS330###3
+objfs_getattr: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_open: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_read: key=/CS330###4 fh=103216
+Val after read i: 1
+Read: I am 4. Registered to CS330.
+objfs_release: key=/CS330###4
+objfs_getattr: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_open: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_read: key=/CS330###5 fh=103217
+Val after read i: 1
+Read: I am 5. Registered to CS330.
+objfs_release: key=/CS330###5
+objfs_getattr: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_open: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_read: key=/CS330###6 fh=103218
+Val after read i: 1
+Read: I am 6. Registered to CS330.
+objfs_release: key=/CS330###6
+objfs_getattr: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_open: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_read: key=/CS330###7 fh=103219
+Val after read i: 1
+Read: I am 7. Registered to CS330.
+objfs_release: key=/CS330###7
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_open: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_read: key=/CS330###8 fh=103220
+Val after read i: 1
+Read: I am [updated] CS330###8. Registered to CS330.
+objfs_release: key=/CS330###8
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_unlink: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_getattr: key=/
+objfs_getattr: key=/CS330###1
+Inside find_object_id with index: 103211
+objfs_getattr: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_open: key=/CS330###2
+Inside find_object_id with index: 103212
+objfs_read: key=/CS330###2 fh=103214
+Val after read i: 1
+Read: I am 2. Registered to CS330.
+objfs_release: key=/CS330###2
+objfs_getattr: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_open: key=/CS330###3
+Inside find_object_id with index: 103213
+objfs_read: key=/CS330###3 fh=103215
+Val after read i: 1
+Read: I am 3. Registered to CS330.
+objfs_release: key=/CS330###3
+objfs_getattr: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_open: key=/CS330###4
+Inside find_object_id with index: 103214
+objfs_read: key=/CS330###4 fh=103216
+Val after read i: 1
+Read: I am 4. Registered to CS330.
+objfs_release: key=/CS330###4
+objfs_getattr: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_open: key=/CS330###5
+Inside find_object_id with index: 103215
+objfs_read: key=/CS330###5 fh=103217
+Val after read i: 1
+Read: I am 5. Registered to CS330.
+objfs_release: key=/CS330###5
+objfs_getattr: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_open: key=/CS330###6
+Inside find_object_id with index: 103216
+objfs_read: key=/CS330###6 fh=103218
+Val after read i: 1
+Read: I am 6. Registered to CS330.
+objfs_release: key=/CS330###6
+objfs_getattr: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_open: key=/CS330###7
+Inside find_object_id with index: 103217
+objfs_read: key=/CS330###7 fh=103219
+Val after read i: 1
+Read: I am 7. Registered to CS330.
+objfs_release: key=/CS330###7
+objfs_getattr: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_open: key=/CS330###8
+Inside find_object_id with index: 103218
+objfs_read: key=/CS330###8 fh=103220
+Val after read i: 1
+Read: I am [updated] CS330###8. Registered to CS330.
+objfs_release: key=/CS330###8
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/
+objfs_getattr: key=/.git
+Inside find_object_id with index: 242455
+objfs_getattr: key=/.git
+Inside find_object_id with index: 242455
+objfs_getattr: key=/
