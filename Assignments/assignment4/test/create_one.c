@@ -2,7 +2,7 @@
 #include <stdlib.h>
 main()
 {
-    int size = 1024*1024*1;
+    int size = 1024*1024*16;
     char *value;
     value = (char *)malloc(size);
     /*char value[size];*/
