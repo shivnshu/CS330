@@ -1,12 +1,14 @@
-all:put get delete update rename get_one
+all:put get delete update rename get_one create_one
 CC = gcc
 LDFLAGS = -pthread
-OBJS = kvstore.o create.o find_and_read.o delete.o update.o rename.o find_one_and_read.o
+OBJS = kvstore.o create.o find_and_read.o delete.o update.o rename.o find_one_and_read.o create_one.o
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) $< -o $@
 put: $(OBJS)   
 	$(CC) -o $@ create.o kvstore.o $(LDFLAGS)
+create_one: $(OBJS)   
+	$(CC) -o $@ create_one.o kvstore.o $(LDFLAGS)
 get: $(OBJS)    
 	$(CC) -o $@ find_and_read.o kvstore.o $(LDFLAGS)
 get_one: $(OBJS)    
@@ -20,4 +22,4 @@ rename: $(OBJS)
 
 .Phony: clean
 clean:
-	rm -f *.o; rm -f put get delete update rename get_one;
+	rm -f *.o; rm -f put get delete update rename get_one create_one;
