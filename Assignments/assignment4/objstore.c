@@ -81,6 +81,8 @@ unsigned int hash(const char *str)
 }
 
 unsigned int get_free_cache_page(struct objfs_state *);
+int get_new_datablock(struct objfs_state *);
+void set_block_bitmap(int);
 
 #ifdef CACHE         // CACHED implementation
 // Read the cached page OR
@@ -92,7 +94,7 @@ static int read_cached(struct objfs_state *objfs, int block_num, char *user_buf)
     char *cache_addr;
     if (sobject->block_bitmap[block_num] == 0) {
         /* dprintf("ALERT: tried to read invalid block\n"); */
-        return 0;
+        return -1;
     }
     if (sobject->block_bitmap[block_num] == 1) {
         cache_index = get_free_cache_page(objfs);
@@ -101,24 +103,25 @@ static int read_cached(struct objfs_state *objfs, int block_num, char *user_buf)
         sobject->block_bitmap[block_num] = cache_index;
         sobject->dirty_flag[cache_index] = 0;
         read_block(objfs, block_num, user_buf);
-        strncpy(cache_addr, user_buf, BLOCK_SIZE);
+        memcpy(cache_addr, user_buf, BLOCK_SIZE);
         return 0;
     }
     cache_index = sobject->block_bitmap[block_num];
     cache_addr = objfs->cache + (cache_index << 12);
-    strncpy(user_buf, cache_addr, BLOCK_SIZE);
+    memcpy(user_buf, cache_addr, BLOCK_SIZE);
     return 0;
 }
 // Write to buffer
 static int write_cached(struct objfs_state *objfs, int block_num, char *user_buf)
 {
     if (sobject->block_bitmap[block_num] == 0) {
-        /* dprintf("ALERT: tried to write invalid block\n"); */
+        dprintf("ALERT: tried to write invalid block\n");
         return -1;
     }
     int cache_index;
     if (sobject->block_bitmap[block_num] > 1) {
         cache_index = sobject->block_bitmap[block_num];
+        dprintf("Isdfddfg\n");
     } else {
         cache_index = get_free_cache_page(objfs);
         // Since cache_index > 1
@@ -126,7 +129,14 @@ static int write_cached(struct objfs_state *objfs, int block_num, char *user_buf
         sobject->cache_bitmap[cache_index] = block_num;
     }
     char *cache_addr = objfs->cache + (cache_index << 12);
-    strncpy(cache_addr, user_buf, BLOCK_SIZE);
+    int *tmp;
+    tmp = (int *)user_buf;
+    dprintf("help3: %d %d %d\n", tmp[0], tmp[1], tmp[2]);
+    dprintf("help3: %x %x %x\n", tmp[0], tmp[1], tmp[2]);
+    memcpy(cache_addr, user_buf, BLOCK_SIZE);
+    tmp = (int *)cache_addr;
+    dprintf("help3: %d %d %d\n", tmp[0], tmp[1], tmp[2]);
+    dprintf("help3: %x %x %d\n", tmp[0], tmp[1], tmp[2]);
     sobject->dirty_flag[cache_index] = 1;
     return 0;
 }
@@ -353,8 +363,12 @@ void read_indirect_block(int block_num, int block_offset, char *buf, int offset,
             break;
         if (block[i] == -1)
             break;
-        if (read_cached(objfs, block[i], tmp) != -1)
+        if (read_cached(objfs, block[i], tmp) != -1) {
+            for (int j=0;j<BLOCK_SIZE;++j) {
+                buf[j+offset+new_offset] = tmp[j];
+            }
             continue;
+        }
         dprintf("Read: block i is %d\n", block[i]);
         if (read_block(objfs, block[i], tmp) < 0)
             break;
@@ -381,8 +395,10 @@ long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs, of
         return -1;
     }
     dprintf("Read: Start DEBUG: size: %d, offset: %d, act size: %d\n", size, offset, obj->size);
-    if (size > 16*1024*1024-offset)
-        size = 16*1024*1024 - offset;
+    /* if (size > 16*1024*1024-offset) */
+        /* size = 16*1024*1024 - offset; */
+    if (size > (obj->size - offset))
+        size = obj->size - offset;
     dprintf("Read: reading size %d\n", size);
 
     int block_offset = offset/BLOCK_SIZE;
@@ -430,12 +446,10 @@ void initialize_block(int block_num, struct objfs_state *objfs)
 {
     int *block;
     malloc_4k(block);
-    if (read_cached(objfs, block_num, (char *)block) == -1)
-        read_block(objfs, block_num, (char *)block);
+    /* read_block(objfs, block_num, (char *)block); */
     for (int i=0;i<BLOCK_SIZE/4;++i)
         block[i] = -1;
-    if (write_cached(objfs, block_num, (char *)block) == -1)
-        write_block(objfs, block_num, (char *)block);
+    write_block(objfs, block_num, (char *)block);
     free_4k(block);
 }
 /*
@@ -455,6 +469,7 @@ int write_indirect_block(int block_num, int block_offset, char *buf, int offset,
         initialize_block(block_num, objfs);
     }
     dprintf("Inside write_indirect with new block num: %d\n", block_num);
+    dprintf("size: %d offset: %d\n", size, offset);
     int new_offset;
     int *block;
     char *tmp;
@@ -462,6 +477,9 @@ int write_indirect_block(int block_num, int block_offset, char *buf, int offset,
     malloc_4k(tmp);
     if (read_cached(objfs, block_num, (char *)block) == -1) {
         read_block(objfs, block_num, (char *)block);
+    }
+    if (size == 4096 && offset == 0) {
+        dprintf("help: %d %d %d\n", block[0], block[1], block[2]);
     }
     int i;
     dprintf("just before for loop. block offset: %d\n", block_offset);
@@ -473,7 +491,9 @@ int write_indirect_block(int block_num, int block_offset, char *buf, int offset,
         if (block[i] == -1) {
             block[i] = get_new_datablock(objfs);
             set_block_bitmap(block[i]);
+            dprintf("write: got new block %d\n", block[i]);
         }
+        dprintf("write : block num is %d\n", block[i]);
         for (int j=0;j<BLOCK_SIZE;++j)
             tmp[j] = buf[offset+new_offset+j];
         if (write_cached(objfs, block[i], buf+offset+new_offset) != -1)
@@ -489,6 +509,10 @@ int write_indirect_block(int block_num, int block_offset, char *buf, int offset,
     if (write_cached(objfs, block_num, (char *)block) == -1) {
         write_block(objfs, block_num, (char *)block);
     }
+    if (read_cached(objfs, block_num, (char *)block) == -1) {
+        read_block(objfs, block_num, (char *)block);
+    }
+    dprintf("help2: %d %d %d\n", block[0], block[1], block[2]);
     free_4k(tmp);
     free_4k(block);
     return block_num;
