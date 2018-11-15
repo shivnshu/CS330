@@ -129,14 +129,14 @@ static int write_cached(struct objfs_state *objfs, int block_num, char *user_buf
         sobject->cache_bitmap[cache_index] = block_num;
     }
     char *cache_addr = objfs->cache + (cache_index << 12);
-    int *tmp;
-    tmp = (int *)user_buf;
-    dprintf("help3: %d %d %d\n", tmp[0], tmp[1], tmp[2]);
-    dprintf("help3: %x %x %x\n", tmp[0], tmp[1], tmp[2]);
+    /* int *tmp; */
+    /* tmp = (int *)user_buf; */
+    /* dprintf("help3: %d %d %d\n", tmp[0], tmp[1], tmp[2]); */
+    /* dprintf("help3: %x %x %x\n", tmp[0], tmp[1], tmp[2]); */
     memcpy(cache_addr, user_buf, BLOCK_SIZE);
-    tmp = (int *)cache_addr;
-    dprintf("help3: %d %d %d\n", tmp[0], tmp[1], tmp[2]);
-    dprintf("help3: %x %x %d\n", tmp[0], tmp[1], tmp[2]);
+    /* tmp = (int *)cache_addr; */
+    /* dprintf("help3: %d %d %d\n", tmp[0], tmp[1], tmp[2]); */
+    /* dprintf("help3: %x %x %d\n", tmp[0], tmp[1], tmp[2]); */
     sobject->dirty_flag[cache_index] = 1;
     return 0;
 }
@@ -166,7 +166,11 @@ static void flush_cache(int cache_index, struct objfs_state *objfs)
     if (sobject->dirty_flag[cache_index] != 0) {
         write_block(objfs, block_num, objfs->cache + (cache_index << 12));
     }
+
+    pthread_mutex_lock(&sobject->cache_bitmap_mutex);
     sobject->cache_bitmap[cache_index] = 0;
+    pthread_mutex_unlock(&sobject->cache_bitmap_mutex);
+
     sobject->block_bitmap[block_num] = 1;
 }
 #else  //uncached implementation
@@ -192,11 +196,14 @@ static void flush_cache(int cache_index, struct objfs_state *objfs)
 // Ensure returned index > 1
 unsigned int get_free_cache_page(struct objfs_state *objfs)
 {
+    pthread_mutex_lock(&sobject->cache_bitmap_mutex);
     unsigned int new_cache_index = sobject->last_cache_index + 1;
     new_cache_index %= CACHE_PAGES;
     if (new_cache_index < 2)
         new_cache_index = 2;
     sobject->last_cache_index = new_cache_index;
+    pthread_mutex_unlock(&sobject->cache_bitmap_mutex);
+
     if (sobject->cache_bitmap[new_cache_index] != 0)
         flush_cache(new_cache_index, objfs);
     return new_cache_index;
@@ -227,10 +234,13 @@ long find_object_id(const char *key, struct objfs_state *objfs)
   Return value: Success --> object ID of the newly created object
                 Failure --> -1
 */
+pthread_mutex_t create_object_lock;
 long create_object(const char *key, struct objfs_state *objfs)
 {
     unsigned long index = hash(key);
     struct object *obj = &sobject->obj[index];
+
+    pthread_mutex_lock(&create_object_lock);
     while (obj->id) {
         if (!strcmp(obj->key, key))
             return -1;
@@ -240,6 +250,8 @@ long create_object(const char *key, struct objfs_state *objfs)
     }
 
     obj->id = indexToID(index);
+    pthread_mutex_unlock(&create_object_lock);
+
     obj->size = 0;
     strncpy(obj->key, key, 32);
     for (index=0;index<4;++index) {
@@ -261,11 +273,15 @@ long release_object(int objid, struct objfs_state *objfs)
 
 void set_block_bitmap(int block_num)
 {
+    pthread_mutex_lock(&sobject->block_bitmap_mutex);
     sobject->block_bitmap[block_num] = 1;
+    pthread_mutex_unlock(&sobject->block_bitmap_mutex);
 }
 void clear_block_bitmap(int block_num)
 {
+    pthread_mutex_lock(&sobject->block_bitmap_mutex);
     sobject->block_bitmap[block_num] = 0;
+    pthread_mutex_unlock(&sobject->block_bitmap_mutex);
 }
 
 /*
@@ -283,8 +299,16 @@ void free_data_block(int data_block_pointer)
         block_num = tmp[i];
         if (block_num == -1)
             break;
+        int cache_index = sobject->block_bitmap[block_num];
+        if (cache_index > 1) {
+
+            pthread_mutex_lock(&sobject->cache_bitmap_mutex);
+            sobject->cache_bitmap[cache_index] = 0;
+            sobject->dirty_flag[cache_index] = 0;
+            pthread_mutex_unlock(&sobject->cache_bitmap_mutex);
+
+        }
         clear_block_bitmap(block_num);
-        /* tmp[i] = -1; */
     }
     free_4k(tmp);
 }
@@ -395,8 +419,6 @@ long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs, of
         return -1;
     }
     dprintf("Read: Start DEBUG: size: %d, offset: %d, act size: %d\n", size, offset, obj->size);
-    /* if (size > 16*1024*1024-offset) */
-        /* size = 16*1024*1024 - offset; */
     if (size > (obj->size - offset))
         size = obj->size - offset;
     dprintf("Read: reading size %d\n", size);
@@ -435,10 +457,15 @@ int get_new_datablock(struct objfs_state *objfs)
 {
     dprintf("Inside get_new_datablock\n");
     dprintf("%d, %d\n", DATA_BLOCKS_START, total_num_disk_blocks);
+    pthread_mutex_lock(&sobject->block_bitmap_mutex);
     for (int i=DATA_BLOCKS_START;i<total_num_disk_blocks;++i) {
-        if (sobject->block_bitmap[i] == 0)
+        if (sobject->block_bitmap[i] == 0) {
+            sobject->block_bitmap[i] = 1; // reserve it
+            pthread_mutex_unlock(&sobject->block_bitmap_mutex);
             return i;
+        }
     }
+    pthread_mutex_unlock(&sobject->block_bitmap_mutex);
     return -1;
 }
 
@@ -446,7 +473,6 @@ void initialize_block(int block_num, struct objfs_state *objfs)
 {
     int *block;
     malloc_4k(block);
-    /* read_block(objfs, block_num, (char *)block); */
     for (int i=0;i<BLOCK_SIZE/4;++i)
         block[i] = -1;
     write_block(objfs, block_num, (char *)block);
@@ -652,7 +678,7 @@ int objstore_init(struct objfs_state *objfs)
 
     pthread_mutex_init(&sobject->block_bitmap_mutex, NULL);
     pthread_mutex_init(&sobject->cache_bitmap_mutex, NULL);
-
+    pthread_mutex_init(&create_object_lock, NULL);
     sobject->last_cache_index = 1;
     for (i=0;i<CACHE_PAGES;++i) {
         sobject->cache_bitmap[i] = 0;
@@ -682,6 +708,7 @@ int objstore_destroy(struct objfs_state *objfs)
 {
     pthread_mutex_destroy(&sobject->block_bitmap_mutex);
     pthread_mutex_destroy(&sobject->cache_bitmap_mutex);
+    pthread_mutex_destroy(&create_object_lock);
     // Sync the data block before unmounting
     cache_sync(objfs);
     objfs->objstore_data = NULL;
