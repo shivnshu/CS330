@@ -348,22 +348,15 @@ void read_indirect_block(int block_num, char *buf, int offset, int size, struct 
             break;
         if (block[i] == -1)
             break;
-        /* if (read_cached(objfs, block[i], buf+offset+new_offset) != -1) */
-            /* continue; */
-        /* if (read_block(objfs, block[i], buf+offset+new_offset) < 0) */
-            /* break; */
+        if (read_cached(objfs, block[i], tmp) != -1)
+            continue;
         dprintf("Read: block i is %d\n", block[i]);
-        read_block(objfs, block[i], tmp);
-        /* if (read_block(objfs, block[i], tmp) < 0) */
-            /* break; */
-        dprintf("Read: tmp size is %d\n", strlen(tmp));
+        if (read_block(objfs, block[i], tmp) < 0)
+            break;
+        dprintf("Read: tmp size is %lu\n", strlen(tmp));
         for (int j=0;j<BLOCK_SIZE;++j) {
-            /* dprintf("%c", tmp[j]); */
             buf[j+offset+new_offset] = tmp[j];
         }
-        /* for (int j=0;j<6*BLOCK_SIZE;++j) { */
-            /* dprintf("%c", *(buf+offset+new_offset+j)); */
-        /* } */
     }
     dprintf("\nRead: i after for loop: %d\n", i);
     free_4k(tmp);
@@ -403,6 +396,7 @@ long objstore_read(int objid, char *buf, int size, struct objfs_state *objfs, of
     for (i=offset;i<size;++i)
         buf[i-offset] = aux_buf[i];
     dprintf("Read: End DEBUG: %d, string size: %d\n", size-offset, strlen(buf));
+    dprintf("Read: total size %d\n", offset+size);
     return size-offset;
 }
 
@@ -419,65 +413,18 @@ void initialize_block(int block_num, struct objfs_state *objfs)
 {
     int *block;
     malloc_4k(block);
-    read_block(objfs, block_num, (char *)block);
+    if (read_cached(objfs, block_num, (char *)block) == -1)
+        read_block(objfs, block_num, (char *)block);
     for (int i=0;i<BLOCK_SIZE/4;++i)
         block[i] = -1;
-    write_block(objfs, block_num, (char *)block);
+    if (write_cached(objfs, block_num, (char *)block) == -1)
+        write_block(objfs, block_num, (char *)block);
     free_4k(block);
 }
 /*
   Writes the content of the buffer into the object with objid = objid.
   Return value: Success --> #of bytes written
                 Failure --> -1
-*/
-/*
-int write_indirect_block(int block_num, char *buf, int offset, int size, struct objfs_state *objfs)
-{
-    dprintf("Inside write_indirect with block num: %d\n", block_num);
-    if (block_num < 0) {
-        block_num = get_new_datablock();
-        set_block_bitmap(block_num);
-        initialize_block(block_num, objfs);
-    }
-    dprintf("Inside write_indirect with new block num: %d\n", block_num);
-    int new_offset;
-    int *block;
-    char *tmp;
-    malloc_4k(block);
-    malloc_4k(tmp);
-    if (read_cached(objfs, block_num, (char *)block) == -1) {
-        read_block(objfs, block_num, (char *)block);
-    }
-    int i;
-    dprintf("just before for loop\n");
-    for (i=0;i<BLOCK_SIZE/4;++i) {
-        new_offset = i*4*1024;
-        dprintf("Write: comp %d %d\n", size, offset+new_offset);
-        if (size <= offset+new_offset)
-            break;
-        if (block[i] == -1) {
-            block[i] = get_new_datablock();
-            set_block_bitmap(block[i]);
-        }
-        for (int j=0;j<BLOCK_SIZE;++j)
-            tmp[j] = buf[offset+new_offset+j];
-        if (write_cached(objfs, block[i], buf+offset+new_offset) != -1)
-            continue;
-        dprintf("write: writing block # %d with content starting with: %c%c%c%c%c\n", block[i], tmp[0], tmp[1], tmp[2], tmp[3], tmp[4]);
-        if (write_block(objfs, block[i], tmp) < 0)
-            break;
-    }
-    dprintf("Write: Val i after write loop: %d\n", i);
-    while (i < BLOCK_SIZE/4) {
-        block[i++] = -1;
-    }
-    if (write_cached(objfs, block_num, (char *)block) == -1) {
-        write_block(objfs, block_num, (char *)block);
-    }
-    free_4k(tmp);
-    free_4k(block);
-    return block_num;
-}
 */
 int write_indirect_block(int block_num, int block_offset, char *buf, int offset, int size, struct objfs_state *objfs)
 {
@@ -497,7 +444,7 @@ int write_indirect_block(int block_num, int block_offset, char *buf, int offset,
         read_block(objfs, block_num, (char *)block);
     }
     int i;
-    dprintf("just before for loop\n");
+    dprintf("just before for loop. block offset: %d\n", block_offset);
     for (i=block_offset;i<BLOCK_SIZE/4;++i) {
         new_offset = (i-block_offset)*4*1024;
         dprintf("Write: comp %d %d\n", size, offset+new_offset);
@@ -531,13 +478,15 @@ int read_indirect_helper(struct objfs_state *objfs, int block_num, int block_off
 {
     char *block;
     malloc_4k(block);
-    read_block(objfs, block_num, block);
+    if (read_cached(objfs, block_num, block) == -1)
+        read_block(objfs, block_num, block);
     int new_block_num = block[block_offset];
     if (new_block_num < 0) {
         dprintf("Read indirect helper: SHOULD not HAPPEND");
         return 0;
     }
-    read_block(objfs, new_block_num, buf);
+    if (read_cached(objfs, new_block_num, buf) == -1)
+        read_block(objfs, new_block_num, buf);
     free_4k(block);
     return 0;
 }
@@ -552,9 +501,10 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
     dprintf("Write: Start DEBUG: size: %d, offset: %d, actual size: %d\n", size, offset, obj->size);
     if (size > 16*1024*1024-offset)
         size = 16*1024*1024-offset;
-    int block_offset = offset/BLOCK_SIZE; // Get starting block number
 
+    int block_offset = offset/BLOCK_SIZE; // Get starting block number
     int data_block_pointer_index = block_offset / 1024;
+    block_offset %= 1024;
 
     char *aux_buf;
     int aux_size;
@@ -589,52 +539,9 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
     free_nk(aux_buf, aux_size);
     obj->size = offset + size;
     dprintf("Write: End DEBUG: wrote %d\n", size);
+    dprintf("Write: Object total size %d\n", offset+size);
     return size;
 }
-/*
-long objstore_write(int objid, const char *buf, int size, struct objfs_state *objfs, off_t offset)
-{
-    if (objid < 2)
-        return -1;
-    struct object *obj = &sobject->obj[idToIndex(objid)];
-    if (obj->id == 0)
-        return -1;
-    dprintf("Write: Start DEBUG: size: %d, offset: %d, act size: %d\n", size, offset, obj->size);
-    size = size + offset;
-    if (size > 16*1024*1024)
-        size = 16*1024*1024;
-    char *aux_buf;
-    int aux_size;
-    if (size % BLOCK_SIZE) {
-        aux_size = size/BLOCK_SIZE + 1;
-    } else {
-        aux_size = size/BLOCK_SIZE;
-    }
-    malloc_nk(aux_buf, aux_size);
-    int i, my_offset;
-    // Small hack to escape from rewriting this function after signature update
-    objstore_read(objid, aux_buf, offset, objfs, 0);
-    dprintf("Write: just before for loop size: %d\n", size);
-    for (i=offset;i<size;++i)
-        aux_buf[i] = buf[i-offset];
-
-    for (i=0;i<4;++i) {
-        my_offset = i*4*1024*1024;
-        if (my_offset >= size)
-            break;
-        obj->data_block_pointers[i] = write_indirect_block(obj->data_block_pointers[i], aux_buf, my_offset, aux_size*BLOCK_SIZE, objfs);
-    }
-    while (i < 4) {
-        obj->data_block_pointers[i++] = -1;
-    }
-
-    free_nk(aux_buf, aux_size);
-    obj->size = size;
-    dprintf("Write: End DEBUG: wrote %d\n", size-offset);
-    return size-offset;
-}
-*/
-
 /*
   Reads the object metadata for obj->id = buf->st_ino
   Fillup buf->st_size and buf->st_blocks correctly
@@ -645,7 +552,8 @@ int cal_number_blocks(int block_num, struct objfs_state *objfs)
     int res = 0;
     int *block;
     malloc_4k(block);
-    read_block(objfs, block_num, (char *)block);
+    if (read_cached(objfs, block_num, (char *)block) == -1)
+        read_block(objfs, block_num, (char *)block);
     for (int i=0;i<BLOCK_SIZE/4;++i) {
         if (block[i] < 0)
             break;
@@ -692,7 +600,6 @@ int objstore_init(struct objfs_state *objfs)
     dprintf("Super Block size: %lu MB, object size: %lu bytes\n", sizeof(struct super_object)/1024/1024, sizeof(struct object));
     dprintf("INit: before read blocks\n");
     while (i < sizeof(struct super_object)) {
-        /* dprintf("%d\n", j); */
         if (read_block(objfs, j, (char *)sobject + i) < 0) {
             dprintf("init: error reading\n");
             return -1;
@@ -720,18 +627,6 @@ int objstore_init(struct objfs_state *objfs)
 
     /* dprintf("%lu\n", sizeof(struct super_object)); */
     dprintf("Done objstore init\n");
-    /* char *tmp; */
-    /* malloc_4k(tmp); */
-    /* read_block(objfs, 17809, tmp); */
-    /* dprintf("BLOCK no. is 17809\n"); */
-    /* for (int j=0;j<BLOCK_SIZE;++j) */
-        /* dprintf("%c", tmp[j]); */
-    /* read_block(objfs, 17810, tmp); */
-    /* dprintf("\nBLOCK no. is 17810\n"); */
-    /* for (int j=0;j<BLOCK_SIZE;++j) */
-        /* dprintf("%c", tmp[j]); */
-    /* free_4k(tmp); */
-    /* dprintf("done\n"); */
     return 0;
 }
 
