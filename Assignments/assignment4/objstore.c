@@ -386,9 +386,9 @@ void read_indirect_block(int block_num, int block_offset, char *buf, int offset,
     }
     int new_offset;
     int *block;
-    char *tmp;
+    /* char *tmp; */
     malloc_4k(block);
-    malloc_4k(tmp);
+    /* malloc_4k(tmp); */
     if (read_cached(objfs, block_num, (char *)block) == -1) {
         read_block(objfs, block_num, (char *)block);
     }
@@ -400,22 +400,22 @@ void read_indirect_block(int block_num, int block_offset, char *buf, int offset,
             break;
         if (block[i] == -1)
             break;
-        if (read_cached(objfs, block[i], tmp) != -1) {
-            for (int j=0;j<BLOCK_SIZE;++j) {
-                buf[j+offset+new_offset] = tmp[j];
-            }
+        if (read_cached(objfs, block[i], buf+offset+new_offset) != -1) {
+            /* for (int j=0;j<BLOCK_SIZE;++j) { */
+                /* buf[j+offset+new_offset] = tmp[j]; */
+            /* } */
             continue;
         }
         dprintf("Read: block i is %d\n", block[i]);
-        if (read_block(objfs, block[i], tmp) < 0)
+        if (read_block(objfs, block[i], buf+offset+new_offset) < 0)
             break;
-        dprintf("Read: tmp size is %lu\n", strlen(tmp));
-        for (int j=0;j<BLOCK_SIZE;++j) {
-            buf[j+offset+new_offset] = tmp[j];
-        }
+        /* dprintf("Read: tmp size is %lu\n", strlen(tmp)); */
+        /* for (int j=0;j<BLOCK_SIZE;++j) { */
+            /* buf[j+offset+new_offset] = tmp[j]; */
+        /* } */
     }
     dprintf("\nRead: i after for loop: %d\n", i);
-    free_4k(tmp);
+    /* free_4k(tmp); */
     dprintf("after freeing\n");
     free_4k(block);
     dprintf("READ: return from indirect read\n");
@@ -641,6 +641,7 @@ int cal_number_blocks(int block_num, struct objfs_state *objfs)
     int res = 0;
     int *block;
     malloc_4k(block);
+    dprintf("Inside call num before read cached\n");
     if (read_cached(objfs, block_num, (char *)block) == -1)
         read_block(objfs, block_num, (char *)block);
     dprintf("Call num block. After reading\n");
