@@ -3,7 +3,7 @@
 
 void main()
 {
-    int size = 1024*1024*9;
+    int size = 1024*1024*13;
     char *value;
     value = (char *)malloc(size);
     /*char value[size];*/
