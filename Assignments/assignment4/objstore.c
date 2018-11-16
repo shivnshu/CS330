@@ -18,6 +18,8 @@ struct object {
 // Cache size is 128 MB
 #define CACHE_PAGES 128*1024/4
 
+pthread_mutex_t create_object_lock;
+
 struct super_object {
     // Store 0 for unused, otherwise used
     // If > 1, it indicates the page distance from objfs->cache
@@ -171,6 +173,7 @@ static void flush_cache(int cache_index, struct objfs_state *objfs)
     sobject->cache_bitmap[cache_index] = 0;
     pthread_mutex_unlock(&sobject->cache_bitmap_mutex);
 
+    // was greater than 0 so should not be a problem
     sobject->block_bitmap[block_num] = 1;
 }
 #else  //uncached implementation
@@ -192,7 +195,6 @@ static void flush_cache(int cache_index, struct objfs_state *objfs)
 }
 #endif
 
-// Employing LRU policy
 // Ensure returned index > 1
 unsigned int get_free_cache_page(struct objfs_state *objfs)
 {
@@ -202,28 +204,35 @@ unsigned int get_free_cache_page(struct objfs_state *objfs)
     if (new_cache_index < 2)
         new_cache_index = 2;
     sobject->last_cache_index = new_cache_index;
-    pthread_mutex_unlock(&sobject->cache_bitmap_mutex);
 
     if (sobject->cache_bitmap[new_cache_index] != 0)
         flush_cache(new_cache_index, objfs);
+
+    pthread_mutex_unlock(&sobject->cache_bitmap_mutex);
     return new_cache_index;
 }
 
 /*
 Returns the object ID.  -1 (invalid), 0, 1 - reserved
 */
+// TODO: what if intermediate block is removed
 long find_object_id(const char *key, struct objfs_state *objfs)
 {
+    pthread_mutex_lock(&create_object_lock);
     int index = hash(key);
-    /* dprintf("Inside find_object_id with index: %d\n", index); */
+    dprintf("Inside find_object_id with index: %d\n", index);
     struct object *obj = &sobject->obj[index];
+
     while (obj->id && strcmp(obj->key, key)) {
         index++;
         index %= 1000000;
         obj = &sobject->obj[index];
     }
-    if (obj->id == 0)
+    if (obj->id == 0) {
+        pthread_mutex_unlock(&create_object_lock);
         return -1;
+    }
+    pthread_mutex_unlock(&create_object_lock);
     return obj->id;
 }
 
@@ -234,29 +243,30 @@ long find_object_id(const char *key, struct objfs_state *objfs)
   Return value: Success --> object ID of the newly created object
                 Failure --> -1
 */
-pthread_mutex_t create_object_lock;
 long create_object(const char *key, struct objfs_state *objfs)
 {
+    pthread_mutex_lock(&create_object_lock);
     unsigned long index = hash(key);
     struct object *obj = &sobject->obj[index];
 
-    pthread_mutex_lock(&create_object_lock);
     while (obj->id) {
-        if (!strcmp(obj->key, key))
+        if (!strcmp(obj->key, key)) {
+            pthread_mutex_unlock(&create_object_lock);
             return -1;
+        }
         index++;
         index %= 1000000;
         obj = &sobject->obj[index];
     }
 
     obj->id = indexToID(index);
-    pthread_mutex_unlock(&create_object_lock);
 
     obj->size = 0;
     strncpy(obj->key, key, 32);
     for (index=0;index<4;++index) {
         obj->data_block_pointers[index] = -1;
     }
+    pthread_mutex_unlock(&create_object_lock);
     return obj->id;
 }
 
@@ -310,6 +320,7 @@ void free_data_block(int data_block_pointer)
         }
         clear_block_bitmap(block_num);
     }
+    clear_block_bitmap(data_block_pointer);
     free_4k(tmp);
 }
 
@@ -354,7 +365,9 @@ long rename_object(const char *key, const char *newname, struct objfs_state *obj
     for (int i=0;i<4;++i) {
         new_obj->data_block_pointers[i] = old_obj->data_block_pointers[i];
     }
+    pthread_mutex_lock(&create_object_lock);
     old_obj->id = 0;
+    pthread_mutex_unlock(&create_object_lock);
     return new_id;
 }
 
@@ -457,6 +470,7 @@ int get_new_datablock(struct objfs_state *objfs)
 {
     dprintf("Inside get_new_datablock\n");
     dprintf("%d, %d\n", DATA_BLOCKS_START, total_num_disk_blocks);
+
     pthread_mutex_lock(&sobject->block_bitmap_mutex);
     for (int i=DATA_BLOCKS_START;i<total_num_disk_blocks;++i) {
         if (sobject->block_bitmap[i] == 0) {
@@ -619,24 +633,32 @@ long objstore_write(int objid, const char *buf, int size, struct objfs_state *ob
 */
 int cal_number_blocks(int block_num, struct objfs_state *objfs)
 {
+    if (block_num < 0) {
+        dprintf("Inside cal number return block num < 0\n");
+        return 0;
+    }
+    dprintf("Inside call num blocks\n");
     int res = 0;
     int *block;
     malloc_4k(block);
     if (read_cached(objfs, block_num, (char *)block) == -1)
         read_block(objfs, block_num, (char *)block);
+    dprintf("Call num block. After reading\n");
     for (int i=0;i<BLOCK_SIZE/4;++i) {
         if (block[i] < 0)
             break;
         res++;
     }
     free_4k(block);
+    dprintf("Returning from call num blocks\n");
     return res;
 }
 
 int fillup_size_details(struct stat *buf, struct objfs_state *objfs)
 {
     int id = buf->st_ino;
-    if (id < 0)
+    dprintf("Inside fillup_size_details with id %d\n", id);
+    if (id < 2)
         return -1;
     int index = idToIndex(id);
     struct object *obj = &sobject->obj[index];
@@ -679,6 +701,7 @@ int objstore_init(struct objfs_state *objfs)
     pthread_mutex_init(&sobject->block_bitmap_mutex, NULL);
     pthread_mutex_init(&sobject->cache_bitmap_mutex, NULL);
     pthread_mutex_init(&create_object_lock, NULL);
+
     sobject->last_cache_index = 1;
     for (i=0;i<CACHE_PAGES;++i) {
         sobject->cache_bitmap[i] = 0;

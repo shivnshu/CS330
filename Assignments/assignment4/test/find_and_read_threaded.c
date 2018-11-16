@@ -14,7 +14,7 @@ void * c1(void* arg)
         sprintf(key, "CS330###%d", ctr);
 
         if(get_key(key, ptr) < 0)
-            printf("Create error\n");
+            printf("Read c1 error\n");
         printf("For key = %s value=%d\n", key, strlen(ptr));
         free(ptr);
     }
@@ -29,7 +29,7 @@ void * c2(void* arg)
         char key[32];
         sprintf(key, "CS330###%d", ctr);
         if(get_key(key, ptr) < 0)
-            printf("Create error\n");
+            printf("Read c2 error\n");
         printf("For key = %s value=%d\n", key, strlen(ptr));
         free(ptr);
     }
@@ -44,7 +44,7 @@ void * c3(void* arg)
         char key[32];
         sprintf(key, "CS330###%d", ctr);
         if(get_key(key, ptr) < 0)
-             printf("Create error\n");
+             printf("Read c3 error\n");
         printf("For key = %s value=%d\n", key, strlen(ptr));
         free(ptr);
     }
@@ -59,7 +59,6 @@ int main()
         perror("pthread_create");
         exit(-1);
     }
-    /*
    if(pthread_create(&threads[1], NULL, c2, NULL) != 0){
         perror("pthread_create");
         exit(-1);
@@ -68,8 +67,7 @@ int main()
         perror("pthread_create");
         exit(-1);
     }
-    */
-    for(int ctr=0; ctr<1 ; ++ctr)
+    for(int ctr=0; ctr<3 ; ++ctr)
         pthread_join(threads[ctr], NULL);
     return 0;
 }

@@ -3,12 +3,12 @@
 
 void main()
 {
-    int size = 1024*1024*16;
+    int size = 1024*24*1;
     char *value;
     value = (char *)malloc(size);
     /*char value[size];*/
     char key[32];
-    sprintf(key, "test");
+    sprintf(key, "CS330###100");
     for (int i=0;i<size;++i) {
         value[i] = 'a' + (i%26);
     }

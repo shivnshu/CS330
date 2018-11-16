@@ -99,6 +99,7 @@ int objfs_read(const char *key, char *buf, size_t size, off_t offset, struct fus
     int retval;
     dprintf("%s: key=%s fh=%ld\n", __func__, key, fi->fh);
     retval = objstore_read(fi->fh, buf, size, objfs, offset);
+    dprintf("In OBJFS read: retval %d\n", retval);
     if(retval < 0)
          return -EINVAL;
     return retval;
