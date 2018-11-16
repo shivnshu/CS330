@@ -1,7 +1,7 @@
-all:put get delete update rename get_one create_one create_threaded get_threaded
+all:put get delete update rename get_one create_one create_threaded get_threaded delete_threaded
 CC = gcc
 LDFLAGS = -pthread
-OBJS = kvstore.o create.o find_and_read.o delete.o update.o rename.o find_one_and_read.o create_one.o create_threaded.o find_and_read_threaded.o
+OBJS = kvstore.o create.o find_and_read.o delete.o update.o rename.o find_one_and_read.o create_one.o create_threaded.o find_and_read_threaded.o delete_threaded.o
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) $< -o $@
@@ -19,6 +19,8 @@ get_threaded: $(OBJS)
 	$(CC) -o $@ find_and_read_threaded.o kvstore.o $(LDFLAGS)
 delete: $(OBJS)    
 	$(CC) -o $@ delete.o kvstore.o $(LDFLAGS)
+delete_threaded: $(OBJS)    
+	$(CC) -o $@ delete_threaded.o kvstore.o $(LDFLAGS)
 update: $(OBJS)    
 	$(CC) -o $@ update.o kvstore.o $(LDFLAGS)
 rename: $(OBJS)    
@@ -26,4 +28,4 @@ rename: $(OBJS)
 
 .Phony: clean
 clean:
-	rm -f *.o; rm -f put get delete update rename get_one create_one;
+	rm -f *.o; rm -f put get delete update rename get_one create_one create_threaded get_threaded delete_threaded;

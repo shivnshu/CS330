@@ -1,4 +1,7 @@
 #include "kvstore.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 long lookup_key(char *key)
 {
@@ -8,7 +11,7 @@ long lookup_key(char *key)
    MAKE_KEY(actual_key, key);
    if(stat(actual_key, &sbuf) < 0)
         return -1;
-   return sbuf.st_size;    
+   return sbuf.st_size;
 }
 
 long put_key(char *key, char *val, int size)
@@ -21,14 +24,14 @@ long put_key(char *key, char *val, int size)
       perror("open");
       return -1;
    }
-  
+
    if(write(fd, val, size) < 0){
       perror("write");
       return -1;
    }
    close(fd);
-   return 0;    
-   
+   return 0;
+
 }
 
 long get_key(char *key, char *val)
@@ -43,12 +46,12 @@ long get_key(char *key, char *val)
       perror("open");
       return -1;
    }
-   
+
    if(fstat(fd, &sbuf) < 0){
       perror("stat");
       exit(-1);
    }
-  
+
    size = sbuf.st_size;
    if(size < 4096)
       size = 4096;
@@ -58,8 +61,8 @@ long get_key(char *key, char *val)
           return -1;
       }
    close(fd);
-   return 0;    
-   
+   return 0;
+
 }
 
 long rename_key(char *old, char *new)

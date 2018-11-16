@@ -7,46 +7,42 @@
 
 void * c1(void* arg)
 {
-    int size=1024*24;
     for(int ctr=0; ctr<50; ++ctr){
-        char* ptr=malloc(size);
         char key[32];
         sprintf(key, "CS330###%d", ctr);
 
-        if(get_key(key, ptr) < 0)
-            printf("Create error\n");
-        printf("For key = %s value=%d\n", key, strlen(ptr));
-        free(ptr);
+        if(delete_key(key) < 0)
+            printf("Delete error\n");
+        else
+            printf("Deleted %s\n", key);
     }
     pthread_exit(0);
 }
 
 void * c2(void* arg)
 {
-    int size=1024*24;
     for(int ctr=50; ctr<100; ++ctr){
-        char* ptr=malloc(size);
         char key[32];
         sprintf(key, "CS330###%d", ctr);
-        if(get_key(key, ptr) < 0)
-            printf("Create error\n");
-        printf("For key = %s value=%d\n", key, strlen(ptr));
-        free(ptr);
+
+        if(delete_key(key) < 0)
+            printf("Delete error\n");
+        else
+            printf("Deleted %s\n", key);
     }
     pthread_exit(0);
 }
 
 void * c3(void* arg)
 {
-	int size=1024*24;
     for(int ctr=100; ctr<150; ++ctr){
-        char* ptr=malloc(size);
         char key[32];
         sprintf(key, "CS330###%d", ctr);
-        if(get_key(key, ptr) < 0)
-             printf("Create error\n");
-        printf("For key = %s value=%d\n", key, strlen(ptr));
-        free(ptr);
+
+        if(delete_key(key) < 0)
+            printf("Delete error\n");
+        else
+            printf("Deleted %s\n", key);
     }
     pthread_exit(0);
 }
@@ -69,7 +65,7 @@ int main()
         exit(-1);
     }
     */
-    for(int ctr=0; ctr<1 ; ++ctr)
+    for(int ctr=0; ctr <1 ; ++ctr)
         pthread_join(threads[ctr], NULL);
     return 0;
 }

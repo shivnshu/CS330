@@ -1,6 +1,7 @@
 #include "kvstore.h"
 #include <stdlib.h>
-main()
+
+void main()
 {
     int size = 1024*1024*16;
     char *value;

@@ -1,5 +1,5 @@
 #include "kvstore.h"
-main()
+void main()
 {
     int total=8, ctr;
     for(ctr=1; ctr<=total; ++ctr){
